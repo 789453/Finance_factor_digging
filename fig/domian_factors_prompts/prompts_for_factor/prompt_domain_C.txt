@@ -1,0 +1,173 @@
+You are a world-class quantitative researcher, formulaic alpha mining expert, and specialist in cross-sectional factor construction for the Chinese A-share market. You are highly experienced in chip-distribution modeling, holder-cost structure analysis, profit-crowding research, overhead-supply dynamics, and symbolic factor design for automated alpha mining systems.
+
+You are now working for a project similar to AlphaPROBE. The project mines symbolic alpha expressions under a fixed operator grammar and uses those expressions as warm-start seeds for DAG-aware factor evolution. Your task is to generate 40 warm-start expressions for the Chip Distribution domain only.
+
+==================================================
+PROJECT UNDERSTANDING
+==================================================
+This task is not generic factor brainstorming. Your expressions will be directly used by a symbolic alpha mining system. Therefore the expressions must:
+1. Be syntactically valid.
+2. Be executable under the project’s fixed grammar.
+3. Reflect meaningful chip-distribution and holder-positioning logic.
+4. Be diverse enough to serve as graph-evolution starting points.
+5. Be appropriate for Chinese A-share cross-sectional stock selection.
+
+The system values:
+- validity
+- diversity
+- novelty
+- financial interpretability
+- moderate complexity
+- evolvability as warm-start factor prototypes
+
+The output format must match the project’s INITIAL_EXPR tuple style:
+('EXPRESSION', 'CATEGORY', 'EXPLANATION')
+
+==================================================
+OUTPUT FORMAT
+==================================================
+You must output exactly one Python list containing exactly 40 tuples.
+
+Each tuple must strictly be:
+('expression_string', 'short_category_label', 'full_english_explanation')
+
+Requirements:
+- Only output the final Python list.
+- No markdown.
+- No extra commentary.
+- The second field must be a concise English category.
+- The third field must be a complete professional English explanation.
+- The result should be directly usable in train_new_work.py as INITIAL_EXPR content.
+
+==================================================
+ALLOWED VARIABLES — CHIP DISTRIBUTION DOMAIN ONLY
+==================================================
+You may use ONLY these variables:
+$close_vs_cost50
+$close_vs_weight_avg
+$chip_width_95_5
+$chip_width_85_15
+$overhang_95
+$support_5
+$winner_rate_pct
+$price_pos_hist
+
+You must NOT use variables from other domains.
+You must NOT use raw OHLCV, turnover, or moneyflow variables.
+
+==================================================
+ALLOWED OPERATORS — ONLY THESE
+==================================================
+Unary:
+Abs, SLog1p, Inv, Sign, Log, Rank
+
+Binary:
+Add, Sub, Mul, Div, Pow, Greater, Less, GetGreater, GetLess
+
+Rolling:
+Ref, TsMean, TsSum, TsStd, TsIr, TsMinMaxDiff, TsMaxDiff, TsMinDiff, TsVar, TsSkew, TsKurt, TsMax, TsMin, TsMed, TsMad, TsRank, TsDelta, TsDiv, TsPctChange, TsWMA, TsEMA
+
+Pair Rolling:
+TsCov, TsCorr
+
+Do NOT invent operators.
+Do NOT change syntax.
+Do NOT introduce unsupported grammar.
+
+==================================================
+WINDOWS AND CONSTANTS
+==================================================
+Rolling windows and Ref lag must ONLY use one of the following integers:
+10, 20, 30, 50
+
+You MUST NOT use the `%d` placeholder anywhere in the expressions. You MUST write the actual integers directly into the expression strings.
+
+The preferred constant pool is:
+-10.0, -2.0, -1.0, -0.5, -0.01, 0.01, 0.5, 1.0, 2.0, 10.0
+
+You may also use:
+0.00001
+only as a numerical safety term for division.
+
+Do NOT use scientific notation.
+Do NOT introduce arbitrary constants outside the pool unless absolutely unavoidable.
+You MUST actively utilize the constants in your expressions to introduce materiality thresholds, neutral reference levels, and stabilizers. Typical examples include 0.5 for profit-neutral crowding balance, 0.01 for minimum meaningful support or overhang, and 1.0 as a conservative structural stabilizer where appropriate.
+
+==================================================
+DOMAIN FINANCIAL SEMANTICS
+==================================================
+This domain describes holder-cost and chip-structure information derived from daily chip-distribution data, including:
+- relative distance between current price and median cost
+- relative distance between current price and weighted average cost
+- width of cost distribution
+- overhead chip pressure
+- low-cost support
+- fraction of holders in profit
+- current position within historical price range
+
+These variables should be treated as structural information about:
+- cost-center migration
+- chip concentration vs dispersion
+- trapped-holder pressure
+- crowded profit conditions
+- support-overhang asymmetry
+- stable vs unstable positioning regimes
+
+==================================================
+CONSTRUCTION PRINCIPLES
+==================================================
+Your 40 expressions should cover multiple chip-distribution mechanisms, including:
+- persistent distance from key cost centers
+- widening or compressing chip width
+- asymmetry between support and overhead supply
+- winner-rate crowding and reversal risk
+- alignment or divergence between historical price position and profit state
+- cost-structure stabilization vs destabilization
+- temporal ranking, skewness, kurtosis, and variability of chip metrics
+- pairwise relationships among holder-profit, overhead pressure, and chip width
+
+==================================================
+QUALITY REQUIREMENTS
+==================================================
+Important:
+- Do not let the whole set reduce to simple transforms of $winner_rate_pct.
+- Fully use:
+  * $close_vs_cost50
+  * $close_vs_weight_avg
+  * $chip_width_95_5
+  * $overhang_95
+  * $support_5
+  * $winner_rate_pct
+  * $price_pos_hist
+- At least some expressions should use:
+  * TsRank
+  * TsMad
+  * TsSkew or TsKurt
+  * TsCorr or TsCov
+- At least some expressions should explicitly represent:
+  * profit crowding
+  * trapped-holder overhang
+  * support-vs-overhang balance
+  * chip concentration vs distribution spread
+  * stable migration away from cost center
+- Avoid shallow duplication and meaningless complexity.
+- Expressions should feel like genuine chip-structure alpha prototypes.
+
+==================================================
+EXAMPLES OF THE EXPECTED STYLE
+==================================================
+Here are 4 examples showing the expected quality and explanation style:
+
+('Div(TsMean($close_vs_cost50, 20), Add(TsStd($close_vs_cost50, 20), 0.00001))', 'Cost-center migration', 'This expression measures the rolling average distance between current price and median chip cost normalized by the volatility of that distance, which is useful for identifying whether price is persistently moving away from the central holder-cost area in a stable and potentially trend-confirming manner.')
+
+('TsMean(Sub($winner_rate_pct, 0.5), 30)', 'Profit crowding bias', 'This expression measures the rolling average deviation of profitable-holder ratio from the neutral 0.5 level, which is useful for identifying whether a stock persistently sits in a regime where more than half of holders are in profit, a condition that may indicate either strong trend sponsorship or rising profit-taking risk.')
+
+('Div(Sub(GetGreater($support_5, 0.01), GetGreater($overhang_95, 0.01)), Add($chip_width_95_5, 1.0))', 'Support-overhang threshold balance', 'This expression measures the difference between low-cost support and overhead chip pressure after applying a minimal materiality threshold of 0.01 to both sides, then scales it by total chip-width plus a unit stabilizer, which is useful for distinguishing stocks with meaningfully asymmetric cost structure from those whose apparent support or overhang is too small to matter.')
+
+('TsCorr($winner_rate_pct, $price_pos_hist, 50)', 'Profit crowding regime', 'This expression measures the rolling correlation between the fraction of holders in profit and the stock’s relative position within its historical price range, which is useful for detecting whether rising historical price positioning is increasingly associated with crowded profitability, a condition that may signal either strong trend sponsorship or elevated reversal risk.')
+
+==================================================
+FINAL TASK
+==================================================
+Now generate exactly 40 tuples for this Chip Distribution domain.
+Return only the final Python list.

@@ -1,0 +1,51 @@
+﻿# Python cache
+__pycache__/
+*.py[cod]
+*.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test / type / coverage cache
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets / env
+.env
+.env.*
+*.pem
+*.key
+
+# Temp
+*.tmp
+*.bak
+
+# Databases
+*.db
+*.sqlite3
+
+# Do not upload parquet data files
+*.parquet

@@ -1,0 +1,25 @@
+{
+  "name": "tushare_daily_A",
+  "version": "1.0",
+  "frequency": "daily",
+  "domain": "A",
+  "data_dir": "data/factor_ready",
+  "files": {
+    "raw": "feature_A_price_volume.parquet",
+    "filled": "feature_A_filled.parquet"
+  },
+  "columns": {
+    "date": "trade_date",
+    "code": "ts_code",
+    "close": "close"
+  },
+  "date_range": {
+    "start": "20160101",
+    "end": "20251231"
+  },
+  "sample_pool": "data/basic/feature_ready/sample_pool_200.json",
+  "supported_operators": ["Ref", "Mean", "Std", "Delta", "Rank", "Min", "Max"],
+  "max_ast_depth": 12,
+  "recommended_delta_times": [5, 10, 20, 30, 40, 50, 60],
+  "recommended_constants": [0.5, 1.0, 2.0, 3.0, 5.0]
+}

@@ -1,0 +1,1382 @@
+[
+    {
+        "full_range": [
+            -56.77058792114258,
+            33.997371673583984
+        ],
+        "range_99": [
+            -0.8156342923641206,
+            0.639535656571389
+        ],
+        "range_95": [
+            -0.4327506273984909,
+            0.35568157583475113
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 4260.53955078125,
+        "col_name": "factor_C_000",
+        "expr": "Div(TsMean(TsDelta(Sub($chip_width_95_5,$chip_width_85_15),10),20),Add($chip_width_85_15,0.01))",
+        "weight": 0.01894368976354599,
+        "topic": "Tail-to-core spread",
+        "description": "Calculates the smoothed momentum of the spread change over 10 days averaged over 20 days, normalized by core width. This reduces noise while retaining trend information of the tail-core divergence.",
+        "ic_ret": 0.01894368976354599,
+        "icir": 0.21591844463623935
+    },
+    {
+        "full_range": [
+            -3.4748098850250244,
+            3.475499391555786
+        ],
+        "range_99": [
+            -1.8984954208135605,
+            1.968299782276154
+        ],
+        "range_95": [
+            -1.30907741189003,
+            1.3751055151224136
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 4.173788547515869,
+        "col_name": "factor_C_001",
+        "expr": "TsSkew($support_5,15)",
+        "weight": 0.015720628201961517,
+        "topic": "Support regime shift",
+        "description": "Analyzes the asymmetry of the support level distribution over 15 days; significant skewness can signal impending non-linear regime shifts before price confirmation.",
+        "ic_ret": 0.015720628201961517,
+        "icir": -0.18113065030793138
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998990297317505
+        ],
+        "range_99": [
+            0.0,
+            0.999861478805542
+        ],
+        "range_95": [
+            0.0,
+            0.999778151512146
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.6057002544403076,
+        "col_name": "factor_C_002",
+        "expr": "Div(Sub(Rank($overhang_95),TsMin(Rank($overhang_95),30)),Add(TsMinMaxDiff(Rank($overhang_95),30),0.0001))",
+        "weight": 0.014714333228766918,
+        "topic": "Overhang rank acceleration",
+        "description": "Normalizes the distance from the lowest rank over 30 days by the total rank range over 30 days, showing the current overhang position's relative intensity within recent trading history.",
+        "ic_ret": 0.014714333228766918,
+        "icir": 0.1545799683254382
+    },
+    {
+        "full_range": [
+            -0.9999966621398926,
+            0.9993864297866821
+        ],
+        "range_99": [
+            -0.9796818807721138,
+            0.47603671178221835
+        ],
+        "range_95": [
+            -0.9629866853356361,
+            0.16699215210974216
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 5.462711334228516,
+        "col_name": "factor_C_003",
+        "expr": "TsCorr(Rank($overhang_95),Rank($winner_rate_pct),30)",
+        "weight": 0.02045903354883194,
+        "topic": "Overhang-profit coupling",
+        "description": "Measures the time-series correlation of cross-sectional ranks, indicating if stocks with high overhang consistently have high profit ranks across the market.",
+        "ic_ret": 0.02045903354883194,
+        "icir": 0.26028836483149664
+    },
+    {
+        "full_range": [
+            -Infinity,
+            Infinity
+        ],
+        "range_99": [
+            -1.3783670723438264,
+            0.7127275213599206
+        ],
+        "range_95": [
+            -0.6163093596696854,
+            0.4447120912373066
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_004",
+        "expr": "Div(TsPctChange($chip_width_95_5,10),Add(TsPctChange($chip_width_85_15,10),1.0))",
+        "weight": 0.024096136912703514,
+        "topic": "Tail-to-core spread",
+        "description": "Compares the 10-day percentage momentum of the tail width against the core width, capturing relative acceleration of tail expansion versus core contraction.",
+        "ic_ret": 0.024096136912703514,
+        "icir": 0.23894067480810147
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998160600662231
+        ],
+        "range_99": [
+            0.004728132393211126,
+            0.9949645519256594
+        ],
+        "range_95": [
+            0.024705221876502037,
+            0.9748773351311684
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8103454113006592,
+        "col_name": "factor_C_005",
+        "expr": "Rank(Sub($chip_width_95_5,TsMean($chip_width_95_5,20)))",
+        "weight": 0.02853401191532612,
+        "topic": "Width expansion rate",
+        "description": "Ranks the absolute deviation of current chip width from its 20-day rolling mean, identifying stocks with unusually wide distributions compared to peers.",
+        "ic_ret": 0.02853401191532612,
+        "icir": 0.3105327669341994
+    },
+    {
+        "full_range": [
+            -1.000001072883606,
+            1.0000009536743164
+        ],
+        "range_99": [
+            -0.985143692791462,
+            -0.011460362747306288
+        ],
+        "range_95": [
+            -0.9741982370615005,
+            -0.34429721534252167
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 13.528778076171875,
+        "col_name": "factor_C_006",
+        "expr": "TsCorr(TsDelta($overhang_95,5),TsDelta($winner_rate_pct,5),30)",
+        "weight": 0.01992121897637844,
+        "topic": "Overhang-profit coupling",
+        "description": "Time-series correlation of daily changes, capturing whether short-term movements in overhang and profit rates move together dynamically.",
+        "ic_ret": 0.01992121897637844,
+        "icir": 0.20627858155776688
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998171329498291
+        ],
+        "range_99": [
+            0.004885826457757502,
+            0.9948898300528527
+        ],
+        "range_95": [
+            0.02489201631397009,
+            0.974896252155304
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.7999998331069946,
+        "col_name": "factor_C_007",
+        "expr": "Rank(Sub($chip_width_95_5,$chip_width_85_15))",
+        "weight": 0.0291601475328207,
+        "topic": "Tail-to-core spread",
+        "description": "This expression ranks the absolute difference between tail and core widths across the cross-section. It highlights stocks with the most extreme tail-to-core divergence at the current moment.",
+        "ic_ret": 0.0291601475328207,
+        "icir": 0.2713163737471336
+    },
+    {
+        "full_range": [
+            -3.557445764541626,
+            1.8681387901306152
+        ],
+        "range_99": [
+            -0.05291740158572793,
+            0.003932840935885917
+        ],
+        "range_95": [
+            -0.032955754082649946,
+            -0.0004132183166802861
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10472.970703125,
+        "col_name": "factor_C_008",
+        "expr": "TsCov($overhang_95,$winner_rate_pct,30)",
+        "weight": 0.020553812384605408,
+        "topic": "Overhang-profit coupling",
+        "description": "This expression measures the rolling covariance between overhead chip pressure and profitable-holder ratio, which is useful for identifying whether increasing profits are being accompanied by growing trapped-holder resistance overhead.",
+        "ic_ret": 0.020553812384605408,
+        "icir": 0.20348931745311527
+    },
+    {
+        "full_range": [
+            -1.0000011920928955,
+            1.0000009536743164
+        ],
+        "range_99": [
+            -0.9897737503051758,
+            0.2947618812322623
+        ],
+        "range_95": [
+            -0.9808864369988441,
+            -0.11217328626662493
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.906529426574707,
+        "col_name": "factor_C_009",
+        "expr": "TsCorr($overhang_95,$winner_rate_pct,30)",
+        "weight": 0.020574163645505905,
+        "topic": "Overhang-profit coupling",
+        "description": "Measures the standardized linear correlation between overhang pressure and winner rate over 30 days, removing scale effects compared to covariance.",
+        "ic_ret": 0.020574163645505905,
+        "icir": 0.22467547000046206
+    },
+    {
+        "full_range": [
+            0.0,
+            Infinity
+        ],
+        "range_99": [
+            0.0,
+            2.5825691103935275
+        ],
+        "range_95": [
+            0.0,
+            1.4194058328866959
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_010",
+        "expr": "Div(TsMinMaxDiff($chip_width_95_5,20),Ref($chip_width_95_5,1))",
+        "weight": 0.028619566932320595,
+        "topic": "Width expansion rate",
+        "description": "Computes the ratio of the 20-day range of chip width to its previous day value, quantifying the relative spread intensity.",
+        "ic_ret": 0.028619566932320595,
+        "icir": -0.22437829527817701
+    },
+    {
+        "full_range": [
+            0.0,
+            Infinity
+        ],
+        "range_99": [
+            0.060100093483924866,
+            431.3579406738281
+        ],
+        "range_95": [
+            0.12801134586334229,
+            151.10354614257812
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_011",
+        "expr": "TsMinMaxDiff(Div($overhang_95,$winner_rate_pct),30)",
+        "weight": 0.018469111993908882,
+        "topic": "Overhang-profit coupling",
+        "description": "Determines the difference between the maximum and minimum values of the ratio over 30 days, quantifying the total volatility range of the coupling.",
+        "ic_ret": 0.018469111993908882,
+        "icir": 0.1707767122258532
+    },
+    {
+        "full_range": [
+            -6.252041339874268,
+            19.976028442382812
+        ],
+        "range_99": [
+            -0.7496564745903015,
+            1.1397463202476503
+        ],
+        "range_95": [
+            -0.45981311425566673,
+            0.6669856756925583
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 37.705413818359375,
+        "col_name": "factor_C_012",
+        "expr": "Div(TsDelta($chip_width_95_5,10),Add(TsMean($chip_width_95_5,20),1e-05))",
+        "weight": 0.019080335274338722,
+        "topic": "Width expansion rate",
+        "description": "This expression measures the 10-day change in broad chip-width normalized by its recent mean, which is useful for identifying whether chip distribution is actively widening or compressing relative to its prevailing structural regime.",
+        "ic_ret": 0.019080335274338722,
+        "icir": 0.19873875728475085
+    },
+    {
+        "full_range": [
+            -1565.26220703125,
+            0.0
+        ],
+        "range_99": [
+            -2.4355333268642427,
+            0.0
+        ],
+        "range_95": [
+            -1.3824893236160278,
+            0.0
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 844486.125,
+        "col_name": "factor_C_013",
+        "expr": "Div(TsMaxDiff(Sub($chip_width_95_5,$chip_width_85_15),20),Add($chip_width_85_15,0.01))",
+        "weight": 0.02518416754901409,
+        "topic": "Tail-to-core spread",
+        "description": "Quantifies the maximum expansion of the spread within the last 20 days relative to the core width, highlighting extreme tail stress events.",
+        "ic_ret": 0.02518416754901409,
+        "icir": 0.2561582805286407
+    },
+    {
+        "full_range": [
+            -3429868.5,
+            64.94444274902344
+        ],
+        "range_99": [
+            -2.876784306764603,
+            1.8593556880950928
+        ],
+        "range_95": [
+            -1.7923617362976074,
+            1.2554714530706406
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 8526690.0,
+        "col_name": "factor_C_014",
+        "expr": "TsIr(TsDelta($chip_width_95_5,5),20)",
+        "weight": 0.023648710921406746,
+        "topic": "Width expansion rate",
+        "description": "Calculates the Information Ratio of the 5-day width change over 20 days, representing the risk-adjusted rate of width expansion.",
+        "ic_ret": 0.023648710921406746,
+        "icir": 0.2911819120928362
+    },
+    {
+        "full_range": [
+            0.0,
+            15.706894874572754
+        ],
+        "range_99": [
+            0.0,
+            0.6440677642822266
+        ],
+        "range_95": [
+            0.022727249190211296,
+            0.3488371968269348
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1154.27978515625,
+        "col_name": "factor_C_015",
+        "expr": "Div(Sub($chip_width_95_5,$chip_width_85_15),Add($chip_width_85_15,1.0))",
+        "weight": 0.017234623432159424,
+        "topic": "Tail-to-core spread",
+        "description": "This expression measures excess broad width over core width scaled by core width plus a stabilizer, which is useful for identifying whether the cost distribution contains unusually fat tails relative to its central concentration.",
+        "ic_ret": 0.017234623432159424,
+        "icir": 0.17553190836080906
+    },
+    {
+        "full_range": [
+            0.0,
+            24.086013793945312
+        ],
+        "range_99": [
+            0.0,
+            1.9943974107503901
+        ],
+        "range_95": [
+            0.014174554380588233,
+            1.416133627295494
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 41.53175735473633,
+        "col_name": "factor_C_016",
+        "expr": "Div(Sub(TsMax($chip_width_95_5,30),TsMin($chip_width_95_5,30)),TsMean($chip_width_95_5,30))",
+        "weight": 0.018087638542056084,
+        "topic": "Width skewness",
+        "description": "Computes the coefficient of variation range by dividing the difference between 30-day max and min width by the 30-day mean width, measuring relative spread intensity.",
+        "ic_ret": 0.018087638542056084,
+        "icir": -0.1423530120349664
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998160600662231
+        ],
+        "range_99": [
+            0.004562046867795288,
+            0.9950129389762878
+        ],
+        "range_95": [
+            0.024198704166337848,
+            0.9751846343278885
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8084063529968262,
+        "col_name": "factor_C_017",
+        "expr": "Rank(Sub($chip_width_95_5,TsMax($chip_width_95_5,20)))",
+        "weight": 0.02734958752989769,
+        "topic": "Width expansion rate",
+        "description": "Ranks stocks cross-sectionally based on how close their current width is to its 20-day maximum, highlighting relative compression or breakout potential across the universe.",
+        "ic_ret": 0.02734958752989769,
+        "icir": 0.2709827430443817
+    },
+    {
+        "full_range": [
+            -Infinity,
+            Infinity
+        ],
+        "range_99": [
+            -1.6624986052513122,
+            1.3198791235685705
+        ],
+        "range_95": [
+            -0.857141375541687,
+            0.7058826684951782
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_018",
+        "expr": "Div(TsDelta(Sub($chip_width_95_5,$chip_width_85_15),10),$chip_width_85_15)",
+        "weight": 0.019270557910203934,
+        "topic": "Tail-to-core spread",
+        "description": "This expression measures the momentum of the spread change over the last 10 days, normalized by the core width. It captures accelerating or decelerating changes in tail risk relative to core concentration.",
+        "ic_ret": 0.019270557910203934,
+        "icir": 0.23876664698958697
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998171329498291
+        ],
+        "range_99": [
+            0.004885826457757502,
+            0.9948898300528527
+        ],
+        "range_95": [
+            0.02489201631397009,
+            0.974896252155304
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.7999998331069946,
+        "col_name": "factor_C_019",
+        "expr": "Rank(Abs(Sub($close_vs_cost50,$close_vs_weight_avg)))",
+        "weight": 0.019281605258584023,
+        "topic": "Relative cost-anchor stability",
+        "description": "Assigns a cross-sectional rank to the absolute magnitude of the difference between the two cost anchors, indicating how extreme this divergence is relative to the broader market universe.",
+        "ic_ret": 0.019281605258584023,
+        "icir": 0.19887168961537657
+    },
+    {
+        "full_range": [
+            -0.9997963905334473,
+            0.9944727420806885
+        ],
+        "range_99": [
+            -0.269805259257555,
+            0.39637643843889425
+        ],
+        "range_95": [
+            -0.17020093277096748,
+            0.2309044897556305
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 11.320266723632812,
+        "col_name": "factor_C_020",
+        "expr": "Sub(Rank(TsStd($close_vs_cost50,20)),Rank(TsStd($close_vs_weight_avg,20)))",
+        "weight": 0.019037628546357155,
+        "topic": "Relative cost rank",
+        "description": "Compares the cross-sectional rank of the 20-day rolling volatility (standard deviation) between the two cost benchmarks, highlighting which asset class exhibits more unstable cost behavior.",
+        "ic_ret": 0.019037628546357155,
+        "icir": 0.26684197145961175
+    },
+    {
+        "full_range": [
+            -2.0655555725097656,
+            Infinity
+        ],
+        "range_99": [
+            -1.7921543538570404,
+            8.80360906124116
+        ],
+        "range_95": [
+            -1.6230847835540771,
+            4.147638261318207
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_021",
+        "expr": "TsKurt(Mul($overhang_95,$winner_rate_pct),30)",
+        "weight": 0.018012193962931633,
+        "topic": "Overhang-profit coupling",
+        "description": "Assesses the kurtosis of the joint product of overhang and winner rate, detecting fat-tail risks or extreme regime changes in the coupling relationship between trapped holders and profitability.",
+        "ic_ret": 0.018012193962931633,
+        "icir": -0.2475275152215757
+    },
+    {
+        "full_range": [
+            0.0,
+            46488.09375
+        ],
+        "range_99": [
+            0.0,
+            6.350903725624109
+        ],
+        "range_95": [
+            0.0,
+            3.658726841211319
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 244938.046875,
+        "col_name": "factor_C_022",
+        "expr": "Div(TsMinMaxDiff($chip_width_85_15,20),Add(TsMin($chip_width_85_15,20),0.0001))",
+        "weight": 0.019068244844675064,
+        "topic": "Core-width expansion",
+        "description": "Computes the ratio of the 20-day price range of chip width to its minimum level, reflecting the intensity of fluctuation in holder concentration.",
+        "ic_ret": 0.019068244844675064,
+        "icir": -0.1676120443174222
+    },
+    {
+        "full_range": [
+            -Infinity,
+            2.760664224624634
+        ],
+        "range_99": [
+            -2.772588014602661,
+            -0.08894747495651245
+        ],
+        "range_95": [
+            -2.4567360877990723,
+            -0.517256498336792
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_023",
+        "expr": "Log(Div($chip_width_95_5,Add($chip_width_85_15,1.0)))",
+        "weight": 0.03494373708963394,
+        "topic": "Tail-to-core spread",
+        "description": "Calculates the natural logarithm of the ratio between tail width and core width (plus stabilizer), providing a scale-invariant measure of tail expansion.",
+        "ic_ret": 0.03494373708963394,
+        "icir": 0.2844392107497774
+    },
+    {
+        "full_range": [
+            -0.5431545376777649,
+            1.975105881690979
+        ],
+        "range_99": [
+            -0.20063912235200404,
+            0.2813400052487853
+        ],
+        "range_95": [
+            -0.13401205837726593,
+            0.17112569697201252
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.774641036987305,
+        "col_name": "factor_C_024",
+        "expr": "Div(Sub(TsEMA($chip_width_95_5,10),TsEMA($chip_width_95_5,20)),Add(TsMean($chip_width_95_5,20),0.0001))",
+        "weight": 0.02480747178196907,
+        "topic": "Width expansion rate",
+        "description": "Compares the short-term exponential moving average against the long-term one, normalized by the mean, to detect early signs of trend shifts in width expansion.",
+        "ic_ret": 0.02480747178196907,
+        "icir": 0.2694353176339029
+    },
+    {
+        "full_range": [
+            -209857120.0,
+            5411890.0
+        ],
+        "range_99": [
+            -103.28613834381103,
+            124.00278186798131
+        ],
+        "range_95": [
+            -14.533133506774902,
+            30.197317361831665
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 8457719.0,
+        "col_name": "factor_C_025",
+        "expr": "Div(TsSum(Greater($overhang_95,$support_5),20),Add(TsSum(Less($overhang_95,$support_5),20),0.01))",
+        "weight": 0.018405228853225708,
+        "topic": "Persistent resistance dominance",
+        "description": "Computes the ratio of days where overhang dominates to days where support dominates over 20 days, providing a normalized measure of dominance intensity relative to failures.",
+        "ic_ret": 0.018405228853225708,
+        "icir": 0.22467144769898134
+    },
+    {
+        "full_range": [
+            0.0,
+            1.0
+        ],
+        "range_99": [
+            0.0,
+            1.0
+        ],
+        "range_95": [
+            0.01666666753590107,
+            1.0
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.544437050819397,
+        "col_name": "factor_C_026",
+        "expr": "TsRank(TsMean($overhang_95,20),60)",
+        "weight": 0.014577662572264671,
+        "topic": "Overhang regime shift",
+        "description": "Ranks the current 20-day mean overhang over a 60-day window; identifies whether current pressure is at historical extremes (high/low percentile).",
+        "ic_ret": 0.014577662572264671,
+        "icir": -0.19107950028562035
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998160600662231
+        ],
+        "range_99": [
+            0.00374687765724957,
+            0.9951861530542374
+        ],
+        "range_95": [
+            0.022990930825471878,
+            0.975386381149292
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8012893199920654,
+        "col_name": "factor_C_027",
+        "expr": "Rank(TsPctChange(Sub($chip_width_95_5,$chip_width_85_15),10))",
+        "weight": 0.018339989706873894,
+        "topic": "Tail-to-core spread",
+        "description": "Ranks the percentage momentum of the spread across the cross-section, filtering noise and focusing on relative strength.",
+        "ic_ret": 0.018339989706873894,
+        "icir": 0.23863265710142773
+    },
+    {
+        "full_range": [
+            -1.0000001192092896,
+            1.000000238418579
+        ],
+        "range_99": [
+            -0.7541826143860817,
+            0.08925497420132181
+        ],
+        "range_95": [
+            -0.6816087290644646,
+            -0.06842733919620514
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 4.010631084442139,
+        "col_name": "factor_C_028",
+        "expr": "TsCorr(TsDelta($overhang_95,1),$winner_rate_pct,30)",
+        "weight": 0.02798275277018547,
+        "topic": "Overhang-profit coupling",
+        "description": "Measures the correlation between daily changes in overhang and current winner rate levels to detect predictive power.",
+        "ic_ret": 0.02798275277018547,
+        "icir": 0.26496543518834315
+    },
+    {
+        "full_range": [
+            0.06369471549987793,
+            668.2928466796875
+        ],
+        "range_99": [
+            0.4942071259021759,
+            31.771777677536047
+        ],
+        "range_95": [
+            0.7434303760528564,
+            23.319026470184326
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 676.3034057617188,
+        "col_name": "factor_C_029",
+        "expr": "Sub(TsSum(Greater($overhang_95,$support_5),20),TsSum(Less($overhang_95,$support_5),20))",
+        "weight": 0.018714791163802147,
+        "topic": "Persistent resistance dominance",
+        "description": "Computes the net count of days where overhang exceeds support versus days where support exceeds overhang, providing a directional bias score of the dominance.",
+        "ic_ret": 0.018714791163802147,
+        "icir": 0.1720707791418435
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998164176940918
+        ],
+        "range_99": [
+            0.004626400873530656,
+            0.9949869513511658
+        ],
+        "range_95": [
+            0.024536674842238426,
+            0.9749124050140381
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8078014850616455,
+        "col_name": "factor_C_030",
+        "expr": "Rank(TsDelta($chip_width_95_5,20))",
+        "weight": 0.031938109546899796,
+        "topic": "Width expansion rate",
+        "description": "Ranks stocks by the absolute 20-day momentum of their chip width, capturing directional expansion or contraction trends.",
+        "ic_ret": 0.031938109546899796,
+        "icir": 0.34127114390345414
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998170137405396
+        ],
+        "range_99": [
+            0.004830917809158564,
+            0.9949456483125687
+        ],
+        "range_95": [
+            0.024620549520477653,
+            0.9749491736292839
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.7997463941574097,
+        "col_name": "factor_C_031",
+        "expr": "Rank(Abs(TsDelta(Sub($close_vs_cost50,$close_vs_weight_avg),1)))",
+        "weight": 0.01604972593486309,
+        "topic": "Relative cost-anchor stability",
+        "description": "Ranks stocks by the magnitude of daily changes in the cost-anchor divergence, highlighting assets experiencing sudden shifts in the relationship between the two cost bases.",
+        "ic_ret": 0.01604972593486309,
+        "icir": -0.15853095071670195
+    },
+    {
+        "full_range": [
+            -4.129826068878174,
+            4.129921913146973
+        ],
+        "range_99": [
+            -1.9362064242362975,
+            2.066807776689535
+        ],
+        "range_95": [
+            -1.313269704580307,
+            1.4272655546665192
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 4.772928237915039,
+        "col_name": "factor_C_032",
+        "expr": "TsSkew($support_5,20)",
+        "weight": 0.01555608119815588,
+        "topic": "Support regime shift",
+        "description": "Skewness of Support Returns: Captures the asymmetry of support movements over the past 20 days. Significant skewness implies a bias in the direction of support erosion or strengthening, often preceding a sustained regime shift.",
+        "ic_ret": 0.01555608119815588,
+        "icir": -0.17753868759620164
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9952423572540283
+        ],
+        "range_99": [
+            0.0008047919836826622,
+            0.7763571530580526
+        ],
+        "range_95": [
+            0.003785951528698206,
+            0.5874466300010681
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 5.881964206695557,
+        "col_name": "factor_C_033",
+        "expr": "TsMinMaxDiff(Rank($overhang_95),10)",
+        "weight": 0.030397776514291763,
+        "topic": "Overhang rank acceleration",
+        "description": "Measures the range (max minus min) of the cross-sectional overhang rank over the past 10 days, indicating the dispersion or fluctuation intensity of the stock's peer-relative overhang status.",
+        "ic_ret": 0.030397776514291763,
+        "icir": -0.2811100839456873
+    },
+    {
+        "full_range": [
+            0.01666666753590107,
+            1.0
+        ],
+        "range_99": [
+            0.01666666753590107,
+            1.0
+        ],
+        "range_95": [
+            0.01666666753590107,
+            1.0
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.5346355438232422,
+        "col_name": "factor_C_034",
+        "expr": "TsRank($chip_width_95_5,60)",
+        "weight": 0.018487975001335144,
+        "topic": "Width expansion rate",
+        "description": "Determines the time-series rank of the current chip width over the past 60 days, showing where the current width stands historically within the recent distribution.",
+        "ic_ret": 0.018487975001335144,
+        "icir": -0.33512891053166505
+    },
+    {
+        "full_range": [
+            -2345.092529296875,
+            2345.092529296875
+        ],
+        "range_99": [
+            -4.027061033248901,
+            4.436052811145786
+        ],
+        "range_95": [
+            -2.7091020047664642,
+            2.976969927549362
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 469204.40625,
+        "col_name": "factor_C_035",
+        "expr": "TsIr(TsDelta(Rank($overhang_95),20),20)",
+        "weight": 0.015896156430244446,
+        "topic": "Overhang rank acceleration",
+        "description": "Directly computes the Rolling Information Ratio of the 20-day rank change over 20 days, providing a standardized measure of the risk-adjusted momentum of the overhang rank.",
+        "ic_ret": 0.015896156430244446,
+        "icir": 0.16257940593476428
+    },
+    {
+        "full_range": [
+            0.0,
+            1.0026289224624634
+        ],
+        "range_99": [
+            0.003333345497958362,
+            0.6865372657775879
+        ],
+        "range_95": [
+            0.010614536702632904,
+            0.37339454889297485
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 17.6457576751709,
+        "col_name": "factor_C_036",
+        "expr": "TsMinMaxDiff($price_pos_hist,20)",
+        "weight": 0.027732301503419876,
+        "topic": "Position range spread",
+        "description": "This expression measures the rolling difference between maximum and minimum historical price position, which is useful for identifying whether the stock is traversing a wide historical regime or remaining trapped within a narrow relative-price corridor.",
+        "ic_ret": 0.027732301503419876,
+        "icir": -0.23165662490033462
+    },
+    {
+        "full_range": [
+            -Infinity,
+            Infinity
+        ],
+        "range_99": [
+            -4.615546309947968,
+            3.422084856033326
+        ],
+        "range_95": [
+            -2.907975286245346,
+            2.1319178640842438
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_037",
+        "expr": "TsIr(TsDelta($chip_width_95_5,10),20)",
+        "weight": 0.01986389234662056,
+        "topic": "Width expansion rate",
+        "description": "Measures the information ratio of the 10-day width change over 20 days, indicating the risk-adjusted strength of width expansion trends.",
+        "ic_ret": 0.01986389234662056,
+        "icir": 0.24891271763679246
+    },
+    {
+        "full_range": [
+            0.0,
+            Infinity
+        ],
+        "range_99": [
+            0.0,
+            2.2104944586754085
+        ],
+        "range_95": [
+            0.0,
+            1.161015346646309
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_038",
+        "expr": "Div(TsMinMaxDiff($chip_width_95_5,15),Ref($chip_width_95_5,1))",
+        "weight": 0.03269684687256813,
+        "topic": "Width expansion rate",
+        "description": "Measures the 15-day price range expansion of chip width normalized by its value from one day ago, capturing relative intraperiod spread.",
+        "ic_ret": 0.03269684687256813,
+        "icir": -0.2522388229734688
+    },
+    {
+        "full_range": [
+            -1.0000009536743164,
+            1.000001072883606
+        ],
+        "range_99": [
+            -0.11308016832917929,
+            0.9897199898958207
+        ],
+        "range_95": [
+            0.3218707777559757,
+            0.9812889471650124
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 18.331932067871094,
+        "col_name": "factor_C_039",
+        "expr": "TsCorr(Sub($winner_rate_pct,0.5),Sub($support_5,$overhang_95),30)",
+        "weight": 0.015870897099375725,
+        "topic": "Crowding-structure coherence",
+        "description": "This expression measures the rolling correlation between profit crowding and support-overhang balance, which is useful for distinguishing healthy profit expansion backed by structure from crowding that develops against worsening supply conditions.",
+        "ic_ret": 0.015870897099375725,
+        "icir": -0.1912852077885153
+    },
+    {
+        "full_range": [
+            -0.9939359426498413,
+            0.9111581444740295
+        ],
+        "range_99": [
+            -0.6081920504570008,
+            0.2231633763760331
+        ],
+        "range_95": [
+            -0.4048133008182049,
+            0.1322628241032362
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.442723274230957,
+        "col_name": "factor_C_040",
+        "expr": "Mul(TsDelta(Rank($overhang_95),20),TsRank(TsDelta(Rank($overhang_95),20),20))",
+        "weight": 0.019644349813461304,
+        "topic": "Overhang rank acceleration",
+        "description": "Multiplies the 20-day rank change by the time-series rank of its own recent changes over 20 days, amplifying signals where the direction of rank change is consistent and persistent.",
+        "ic_ret": 0.019644349813461304,
+        "icir": 0.2142233052943036
+    },
+    {
+        "full_range": [
+            0.0,
+            3.3266799449920654
+        ],
+        "range_99": [
+            0.5946694210171699,
+            1.4074687600135816
+        ],
+        "range_95": [
+            0.7363498657941818,
+            1.2395075857639313
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.208391189575195,
+        "col_name": "factor_C_041",
+        "expr": "Div(TsMed($chip_width_95_5,10),Add(TsMean($chip_width_95_5,20),0.0001))",
+        "weight": 0.025703703984618187,
+        "topic": "Width expansion rate",
+        "description": "Compares the robust median width over 10 days to the mean width over 20 days; deviations indicate skewness in the width distribution, highlighting outlier-driven expansion.",
+        "ic_ret": 0.025703703984618187,
+        "icir": 0.2768227471065255
+    },
+    {
+        "full_range": [
+            -1.0,
+            Infinity
+        ],
+        "range_99": [
+            -0.666666567325592,
+            2.1875
+        ],
+        "range_95": [
+            -0.505850687623024,
+            1.1272728443145752
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_C_042",
+        "expr": "TsPctChange($chip_width_95_5,20)",
+        "weight": 0.022775020450353622,
+        "topic": "Width expansion rate",
+        "description": "Computes the direct percentage change of chip width over 20 days, providing a pure measure of the cumulative expansion rate without normalization noise.",
+        "ic_ret": 0.022775020450353622,
+        "icir": 0.24254643020891867
+    },
+    {
+        "full_range": [
+            -1.0000003576278687,
+            0.9989917874336243
+        ],
+        "range_99": [
+            -0.9970664098858834,
+            0.2829652629792691
+        ],
+        "range_95": [
+            -0.992444634437561,
+            -0.007771203119773418
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.747125625610352,
+        "col_name": "factor_C_043",
+        "expr": "TsCorr(Rank($close_vs_weight_avg),Rank($overhang_95),30)",
+        "weight": 0.019801445305347443,
+        "topic": "Cost-overhang co-movement",
+        "description": "Calculates the Pearson correlation of the cross-sectional ranks of cost deviation and overhang, focusing on monotonic relationships rather than magnitude.",
+        "ic_ret": 0.019801445305347443,
+        "icir": 0.26793384562265643
+    },
+    {
+        "full_range": [
+            -0.9997960925102234,
+            0.9897449016571045
+        ],
+        "range_99": [
+            -0.2670032657682896,
+            0.36321020126342773
+        ],
+        "range_95": [
+            -0.1687239706516266,
+            0.21575986221432686
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 10.938461303710938,
+        "col_name": "factor_C_044",
+        "expr": "Sub(Rank(TsMinMaxDiff($close_vs_cost50,20)),Rank(TsMinMaxDiff($close_vs_weight_avg,20)))",
+        "weight": 0.016858600080013275,
+        "topic": "Relative cost rank",
+        "description": "Evaluates the cross-sectional ranking of the price ranges (High-Low) of the cost metrics, identifying which cost benchmark exhibits more significant relative trading ranges.",
+        "ic_ret": 0.016858600080013275,
+        "icir": 0.23533791129350992
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998157620429993
+        ],
+        "range_99": [
+            0.004806504934094846,
+            0.99550718665123
+        ],
+        "range_95": [
+            0.024979248410090804,
+            0.9757272601127625
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8139634132385254,
+        "col_name": "factor_C_045",
+        "expr": "Rank(TsMinMaxDiff($winner_rate_pct,30))",
+        "weight": 0.020494505763053894,
+        "topic": "Profit tail intensity",
+        "description": "Ranks stocks by their 30-day price range (max-min) to capture extreme intraperiod tail movements.",
+        "ic_ret": 0.020494505763053894,
+        "icir": -0.17897910720096266
+    },
+    {
+        "full_range": [
+            -0.9347171187400818,
+            0.95720374584198
+        ],
+        "range_99": [
+            -0.7046630293130874,
+            0.663118918240072
+        ],
+        "range_95": [
+            -0.6034167557954788,
+            0.4878380745649338
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.820988178253174,
+        "col_name": "factor_C_046",
+        "expr": "Div(Sub($price_pos_hist,$winner_rate_pct),Add($chip_width_95_5,1.0))",
+        "weight": 0.020231710746884346,
+        "topic": "Position-profit mismatch",
+        "description": "This expression measures the difference between historical price position and profitable-holder ratio scaled by broad chip-width, which is useful for identifying divergence between where price sits in its historical range and how much of the holder base is actually in profit.",
+        "ic_ret": 0.020231710746884346,
+        "icir": -0.17543977538431835
+    },
+    {
+        "full_range": [
+            -4.248464107513428,
+            4.248462677001953
+        ],
+        "range_99": [
+            -3.332101708650589,
+            3.653012126684192
+        ],
+        "range_95": [
+            -2.3809721171855927,
+            2.633878380060196
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.660566806793213,
+        "col_name": "factor_C_047",
+        "expr": "Div(Sub($chip_width_95_5,TsMean($chip_width_95_5,20)),Add(TsStd($chip_width_95_5,20),0.0001))",
+        "weight": 0.0185397882014513,
+        "topic": "Width expansion rate",
+        "description": "Calculates the z-score of current chip width relative to its 20-day mean and volatility, identifying extreme deviations from the structural regime.",
+        "ic_ret": 0.0185397882014513,
+        "icir": 0.22816123664190396
+    },
+    {
+        "full_range": [
+            -15.582194328308105,
+            11.036116600036621
+        ],
+        "range_99": [
+            -0.22166605964303018,
+            0.193982382118702
+        ],
+        "range_95": [
+            -0.11842107214033604,
+            0.1101161353290081
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 3518.47509765625,
+        "col_name": "factor_C_048",
+        "expr": "TsDelta(Div(Sub($chip_width_95_5,$chip_width_85_15),Add($chip_width_85_15,1.0)),20)",
+        "weight": 0.018196865916252136,
+        "topic": "Tail-to-core spread",
+        "description": "Measures the 20-day change in the tail-to-core spread ratio, indicating whether the fat-tail characteristic is expanding or contracting over time.",
+        "ic_ret": 0.018196865916252136,
+        "icir": 0.21027182603242708
+    },
+    {
+        "full_range": [
+            0.0,
+            4.4721360206604
+        ],
+        "range_99": [
+            0.0,
+            0.6759619116783142
+        ],
+        "range_95": [
+            0.0,
+            0.49504753202199936
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 28.96344566345215,
+        "col_name": "factor_C_049",
+        "expr": "Div(TsStd($chip_width_85_15,20),TsMean($chip_width_85_15,20))",
+        "weight": 0.014259716495871544,
+        "topic": "Core-width expansion",
+        "description": "Coefficient of variation of chip width, measuring the relative volatility or stability of the holder cost distribution over the past 20 days.",
+        "ic_ret": 0.014259716495871544,
+        "icir": -0.12473914287002492
+    },
+    {
+        "full_range": [
+            -5.1994781494140625,
+            5.1994781494140625
+        ],
+        "range_99": [
+            -5.199469089508057,
+            5.19946813583374
+        ],
+        "range_95": [
+            -1.7888553142547607,
+            2.1225515604019165
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 7.509212970733643,
+        "col_name": "factor_C_050",
+        "expr": "TsSkew(TsDelta($chip_width_95_5,5),30)",
+        "weight": 0.02012597769498825,
+        "topic": "Width expansion rate",
+        "description": "Evaluates the skewness of the 5-day width changes over 30 days to detect asymmetric tendencies in width expansion or compression.",
+        "ic_ret": 0.02012597769498825,
+        "icir": 0.26139289625206696
+    },
+    {
+        "full_range": [
+            -4.129490852355957,
+            4.129490852355957
+        ],
+        "range_99": [
+            -4.129484176635742,
+            4.129483699798584
+        ],
+        "range_95": [
+            -2.3313533067703247,
+            2.381328582763672
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 7.037050724029541,
+        "col_name": "factor_C_051",
+        "expr": "TsSkew(TsDelta($chip_width_95_5,5),20)",
+        "weight": 0.015452247112989426,
+        "topic": "Width expansion rate",
+        "description": "Captures the skewness of the 5-day width changes over 20 days, detecting asymmetric pressure where large expansions occur more frequently than compressions.",
+        "ic_ret": 0.015452247112989426,
+        "icir": 0.20461735083887342
+    },
+    {
+        "full_range": [
+            0.0,
+            0.4539912939071655
+        ],
+        "range_99": [
+            0.0003178274018864613,
+            0.2300515539944173
+        ],
+        "range_95": [
+            0.0013734327221754938,
+            0.1643006056547165
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 7.115087032318115,
+        "col_name": "factor_C_052",
+        "expr": "TsStd(TsDelta(Rank($overhang_95),1),20)",
+        "weight": 0.02545139193534851,
+        "topic": "Overhang rank acceleration",
+        "description": "Calculates the rolling standard deviation of daily rank changes over 20 days, quantifying the stability or volatility of the stock's shifting relative overhang position among peers.",
+        "ic_ret": 0.02545139193534851,
+        "icir": -0.20939954463375798
+    },
+    {
+        "full_range": [
+            -3.484328031539917,
+            2.479051351547241
+        ],
+        "range_99": [
+            -1.107256653904915,
+            0.8052017331123382
+        ],
+        "range_95": [
+            -0.7160023748874664,
+            0.5723081901669502
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 5.187775135040283,
+        "col_name": "factor_C_053",
+        "expr": "TsIr(TsDelta($chip_width_95_5,1),20)",
+        "weight": 0.02312386967241764,
+        "topic": "Width expansion rate",
+        "description": "Calculates the Information Ratio of the daily width change over 20 days, quantifying the consistency and risk-adjusted magnitude of width movements.",
+        "ic_ret": 0.02312386967241764,
+        "icir": 0.2744700475020349
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9999966025352478
+        ],
+        "range_99": [
+            0.0,
+            0.9996602535247803
+        ],
+        "range_95": [
+            0.0,
+            0.9993900060653687
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.3255034685134888,
+        "col_name": "factor_C_054",
+        "expr": "Div(Sub($chip_width_95_5,TsMin($chip_width_95_5,20)),Add(Sub(TsMax($chip_width_95_5,20),TsMin($chip_width_95_5,20)),0.0001))",
+        "weight": 0.02126486413180828,
+        "topic": "Width expansion rate",
+        "description": "Determines the current chip width's position within its 20-day range (normalized 0-1 scale), indicating if the width is near historical extremes relative to the period.",
+        "ic_ret": 0.02126486413180828,
+        "icir": 0.2598244023728178
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998164772987366
+        ],
+        "range_99": [
+            0.004533381236251443,
+            0.99503493309021
+        ],
+        "range_95": [
+            0.024326529121026397,
+            0.9751355648040771
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8013564348220825,
+        "col_name": "factor_C_055",
+        "expr": "Rank(TsDelta($chip_width_95_5,10))",
+        "weight": 0.020846325904130936,
+        "topic": "Width expansion rate",
+        "description": "Ranks the 10-day absolute change in chip width cross-sectionally, showing how a stock's width momentum compares to the broader market universe.",
+        "ic_ret": 0.020846325904130936,
+        "icir": 0.21949215949355577
+    },
+    {
+        "full_range": [
+            0.0,
+            1903406336.0
+        ],
+        "range_99": [
+            0.00022109650417405645,
+            6192.092285156279
+        ],
+        "range_95": [
+            0.0010179450764553621,
+            964.1774063110352
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 197737.140625,
+        "col_name": "factor_C_056",
+        "expr": "TsVar(Div($overhang_95,$winner_rate_pct),30)",
+        "weight": 0.015831472352147102,
+        "topic": "Overhang-profit coupling",
+        "description": "Calculates the rolling variance of the overhang-to-winner-rate ratio, capturing the stability or volatility of their coupling relationship over time.",
+        "ic_ret": 0.015831472352147102,
+        "icir": 0.15746299388485047
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998160600662231
+        ],
+        "range_99": [
+            0.004599567037075758,
+            0.995199978351593
+        ],
+        "range_95": [
+            0.024643706157803535,
+            0.9755993783473969
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8064672946929932,
+        "col_name": "factor_C_057",
+        "expr": "Rank(TsVar($winner_rate_pct,20))",
+        "weight": 0.01741843670606613,
+        "topic": "Profit tail intensity",
+        "description": "Ranks stocks by their 20-day return variance to identify cross-sectional concentration of tail risk magnitude.",
+        "ic_ret": 0.01741843670606613,
+        "icir": -0.14755622457561549
+    },
+    {
+        "full_range": [
+            0.0,
+            1.0
+        ],
+        "range_99": [
+            0.0,
+            1.0
+        ],
+        "range_95": [
+            0.01666666753590107,
+            1.0
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.5351901054382324,
+        "col_name": "factor_C_058",
+        "expr": "TsRank(TsMean(Greater($overhang_95,$support_5),20),60)",
+        "weight": 0.015463150106370449,
+        "topic": "Persistent resistance dominance",
+        "description": "Ranks the current 20-day dominance frequency against the past 60 days, identifying whether the current resistance environment is historically extreme or typical.",
+        "ic_ret": 0.015463150106370449,
+        "icir": -0.1840725149888111
+    },
+    {
+        "full_range": [
+            -1.0,
+            1.0
+        ],
+        "range_99": [
+            -1.0,
+            1.0
+        ],
+        "range_95": [
+            -0.8999999761581421,
+            1.0
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.9687800407409668,
+        "col_name": "factor_C_059",
+        "expr": "Add(Mul(Sign($close_vs_weight_avg),TsRank($overhang_95,30)),0.0)",
+        "weight": 0.017667217180132866,
+        "topic": "Cost-overhang co-movement",
+        "description": "Combines the directional signal of cost deviation with the relative rank of overhang pressure, shifted by 0.0 to ensure dimensionless output compatibility.",
+        "ic_ret": 0.017667217180132866,
+        "icir": -0.17680422503500437
+    }
+]

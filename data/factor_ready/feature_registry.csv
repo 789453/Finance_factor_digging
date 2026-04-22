@@ -1,0 +1,41 @@
+feature_name,domain,source_table,freq,entity_key,time_key,source_columns,formula_desc,unit_type,value_type,allow_in_alphaprobe,allow_in_model,fill_policy,clip_policy,neutralize_policy,start_date,notes
+ret_cc_1d,A,daily,daily,ts_code,trade_date,"close, pre_close",close/pre_close - 1,ratio,float,1,1,none,clip_1_99,none,,Daily close-to-close return
+ret_oc_1d,A,daily,daily,ts_code,trade_date,"close, open",close/open - 1,ratio,float,1,1,none,none,none,,Intraday return (Open to Close)
+gap_open,A,daily,daily,ts_code,trade_date,"open, pre_close",open/pre_close - 1,ratio,float,1,1,none,clip_1_99,none,,Overnight gap
+intraday_range,A,daily,daily,ts_code,trade_date,"high, low, pre_close",(high-low)/(pre_close + epsilon),ratio,float,1,1,none,clip_1_99,none,,True range normalized
+upper_shadow_ratio,A,daily,daily,ts_code,trade_date,"high, open, close, low","(high-max(open,close))/(high-low+epsilon)",ratio,float,1,1,none,none,none,,Upper shadow strength
+lower_shadow_ratio,A,daily,daily,ts_code,trade_date,"high, open, close, low","(min(open,close)-low)/(high-low+epsilon)",ratio,float,1,1,none,none,none,,Lower shadow strength
+turnover_free,A,daily_basic,daily,ts_code,trade_date,turnover_rate_f,turnover_rate_f / 100,ratio,float,1,1,none,none,optional_cs,,Free float turnover rate
+volume_ratio_ln,A,daily_basic,daily,ts_code,trade_date,volume_ratio,log(1 + volume_ratio),ratio,float,1,1,none,none,optional_cs,,Log volume ratio
+imb_sm_amt,B,moneyflow,daily,ts_code,trade_date,"buy_sm_amount, sell_sm_amount",(buy_sm - sell_sm) / (buy_sm + sell_sm + eps),ratio,float,1,1,zero_if_both_zero_else_nan,none,none,20100101,Small order imbalance
+imb_md_amt,B,moneyflow,daily,ts_code,trade_date,"buy_md_amount, sell_md_amount",(buy_md - sell_md) / (buy_md + sell_md + eps),ratio,float,1,1,zero_if_both_zero_else_nan,none,none,20100101,Medium order imbalance
+imb_lg_amt,B,moneyflow,daily,ts_code,trade_date,"buy_lg_amount, sell_lg_amount",(buy_lg - sell_lg) / (buy_lg + sell_lg + eps),ratio,float,1,1,zero_if_both_zero_else_nan,none,none,20100101,Large order imbalance
+imb_elg_amt,B,moneyflow,daily,ts_code,trade_date,"buy_elg_amount, sell_elg_amount",(buy_elg - sell_elg) / (buy_elg + sell_elg + eps),ratio,float,1,1,zero_if_both_zero_else_nan,none,none,20100101,Extra large order imbalance
+net_mf_to_amount,B,"moneyflow, daily",daily,ts_code,trade_date,"net_mf_amount, amount",net_mf_amount / (amount + eps),ratio,float,1,1,nan_if_amount_zero,clip_1_99,optional_cs,20100101,Net moneyflow ratio. Note unit conversion needed.
+large_buy_share,B,moneyflow,daily,ts_code,trade_date,"buy_lg, buy_elg, buy_sm, buy_md",(lg+elg)/total_buy,ratio,float,1,1,none,none,none,20100101,Share of large buy orders
+large_sell_share,B,moneyflow,daily,ts_code,trade_date,"sell_lg, sell_elg, sell_sm, sell_md",(lg+elg)/total_sell,ratio,float,1,1,none,none,none,20100101,Share of large sell orders
+flow_divergence,B,moneyflow,daily,ts_code,trade_date,"imb_elg_amt, imb_sm_amt",imb_elg_amt - imb_sm_amt,ratio,float,1,1,none,none,none,20100101,Divergence between ELG and Small orders
+close_vs_cost50,C,"cyq_perf, daily",daily,ts_code,trade_date,"close, cost_50pct",(close - cost_50pct) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,none,none,20180101,Price vs Median Cost
+close_vs_weight_avg,C,"cyq_perf, daily",daily,ts_code,trade_date,"close, weight_avg",(close - weight_avg) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,none,none,20180101,Price vs Avg Cost
+chip_width_95_5,C,"cyq_perf, daily",daily,ts_code,trade_date,"cost_95pct, cost_5pct, close",(cost_95pct - cost_5pct) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,clip_1_99,none,20180101,Chip distribution width (90%)
+chip_width_85_15,C,"cyq_perf, daily",daily,ts_code,trade_date,"cost_85pct, cost_15pct, close",(cost_85pct - cost_15pct) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,none,none,20180101,Chip distribution width (70%)
+overhang_95,C,"cyq_perf, daily",daily,ts_code,trade_date,"cost_95pct, close",(cost_95pct - close) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,clip_1_99,none,20180101,Overhead pressure
+support_5,C,"cyq_perf, daily",daily,ts_code,trade_date,"cost_5pct, close",(close - cost_5pct) / (close + eps),ratio,float,1,1,ffill_1d_if_single_gap,none,none,20180101,Support cushion
+winner_rate_pct,C,cyq_perf,daily,ts_code,trade_date,winner_rate,winner_rate / 100,ratio,float,1,1,clip_0_1,none,none,20180101,Winner rate normalized
+price_pos_hist,C,"cyq_perf, daily",daily,ts_code,trade_date,"close, his_low, his_high",(close - his_low) / (his_high - his_low + eps),ratio,float,1,1,none,clip_0_1_robust,none,20180101,Price position in history
+pe_ttm_rank_ind,D,daily_basic,daily,ts_code,trade_date,"pe_ttm, industry",industry rank of pe_ttm,rank,float,0,1,industry_median,none,industry_rank,,PE TTM Industry Rank
+pb_rank_ind,D,daily_basic,daily,ts_code,trade_date,"pb, industry",industry rank of pb,rank,float,0,1,industry_median,none,industry_rank,,PB Industry Rank
+ps_ttm_rank_ind,D,daily_basic,daily,ts_code,trade_date,"ps_ttm, industry",industry rank of ps_ttm,rank,float,0,1,industry_median,none,industry_rank,,PS TTM Industry Rank
+dv_ttm_rank_mkt,D,daily_basic,daily,ts_code,trade_date,dv_ttm,market rank of dv_ttm,rank,float,0,1,zero,none,none,,Dividend Yield Market Rank
+mv_rank_mkt,D,daily_basic,daily,ts_code,trade_date,total_mv,market rank of total_mv,rank,float,0,1,none,none,none,,Total Market Value Rank
+free_float_ratio,D,daily_basic,daily,ts_code,trade_date,"free_share, total_share",free_share / (total_share + eps),ratio,float,0,1,none,none,none,,Free Float Ratio
+circ_mv_to_total_mv,D,daily_basic,daily,ts_code,trade_date,"circ_mv, total_mv",circ_mv / (total_mv + eps),ratio,float,0,1,none,none,none,,Circulating MV Ratio
+valuation_compress_score,D,daily_basic,daily,ts_code,trade_date,"pe_ttm_rank, pb_rank, ps_ttm_rank",-0.4*pe -0.4*pb -0.2*ps,score,float,0,1,none,none,none,,Composite Valuation Score
+hour1_ret,E,stk_60_mins,daily,ts_code,trade_date,"close_h1, open_h1",First hour return,ratio,float,1,1,none,none,none,,First hour return
+lasthour_ret,E,stk_60_mins,daily,ts_code,trade_date,"close_last, open_last",Last hour return,ratio,float,1,1,none,none,none,,Last hour return
+midday_reversal,E,stk_60_mins,daily,ts_code,trade_date,"lasthour_ret, hour1_ret",lasthour_ret - hour1_ret,ratio,float,1,1,none,none,none,,Intraday reversal
+intraday_trend_eff,E,stk_60_mins,daily,ts_code,trade_date,"day_ret, sum_abs_hourly_ret",(close_day-open_day)/sum(|ret_h|),ratio,float,1,1,none,clip_20,none,,Intraday trend efficiency
+hourly_volatility,E,stk_60_mins,daily,ts_code,trade_date,hourly_returns,std(hourly_returns),ratio,float,1,1,none,none,none,,Hourly return volatility
+volume_concentration_pm,E,stk_60_mins,daily,ts_code,trade_date,"vol_pm, vol_total",vol_pm / vol_total,ratio,float,1,1,none,none,none,,Afternoon volume concentration
+vwap_close_bias_1h,E,stk_60_mins,daily,ts_code,trade_date,"close, vwap_1h",(close - vwap_1h) / close,ratio,float,1,1,none,none,none,,Close vs 1H VWAP bias
+high_low_time_skew,E,stk_60_mins,daily,ts_code,trade_date,"high_time, low_time",high_time_idx - low_time_idx (normalized),score,float,1,1,none,none,none,,Timing skew of high/low

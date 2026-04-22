@@ -1,0 +1,922 @@
+[
+    {
+        "full_range": [
+            -4.496216773986816,
+            6.207852363586426
+        ],
+        "range_99": [
+            -0.7730584907531738,
+            1.453845672607422
+        ],
+        "range_95": [
+            -0.5060466885566711,
+            0.9710102200508095
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 5.397887706756592,
+        "col_name": "factor_A_000",
+        "expr": "Mul(TsCorr($ret_cc_1d,$volume_ratio_ln,20),Div($volume_ratio_ln,TsMean($volume_ratio_ln,20)))",
+        "weight": 0.02761799655854702,
+        "topic": "Return-volume correlation",
+        "description": "Weights the return-volume correlation by relative volume intensity to prioritize high-activity periods.",
+        "ic_ret": 0.02761799655854702,
+        "icir": -0.27532281511726053
+    },
+    {
+        "full_range": [
+            -0.9998157620429993,
+            -0.0
+        ],
+        "range_99": [
+            -0.9962589144706726,
+            -0.004703997448086701
+        ],
+        "range_95": [
+            -0.9777028560638428,
+            -0.02508474513888359
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.822741985321045,
+        "col_name": "factor_A_001",
+        "expr": "Mul(Rank(TsMad($intraday_range,30)),-1.0)",
+        "weight": 0.03796966373920441,
+        "topic": "Low volatility preference",
+        "description": "Uses Median Absolute Deviation for robust volatility estimation, ranked cross-sectionally and inverted to prefer low volatility stocks.",
+        "ic_ret": 0.03796966373920441,
+        "icir": 0.30254354080458434
+    },
+    {
+        "full_range": [
+            -3891.837158203125,
+            8753.451171875
+        ],
+        "range_99": [
+            -0.09975202351808549,
+            0.18348988473415484
+        ],
+        "range_95": [
+            -0.05121137201786041,
+            0.06666284203529355
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 19992.828125,
+        "col_name": "factor_A_002",
+        "expr": "Div(TsMean($ret_cc_1d,20),Add(TsMean($upper_shadow_ratio,20),0.0001))",
+        "weight": 0.03747914731502533,
+        "topic": "Return sensitivity to wicks",
+        "description": "Ratio of average returns to average wick ratios, representing the magnitude of return sensitivity per unit of upper shadow.",
+        "ic_ret": 0.03747914731502533,
+        "icir": -0.26368059074567074
+    },
+    {
+        "full_range": [
+            -38.91836929321289,
+            87.53451538085938
+        ],
+        "range_99": [
+            -1.0510566091537477,
+            3.0036749839782715
+        ],
+        "range_95": [
+            -0.6700122952461243,
+            1.3432487726211546
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1374.3349609375,
+        "col_name": "factor_A_003",
+        "expr": "TsMean(Div($ret_cc_1d,Add($upper_shadow_ratio,0.01)),20)",
+        "weight": 0.02907610312104225,
+        "topic": "Return sensitivity to wicks",
+        "description": "Computes the 20-day average of returns normalized by shadow magnitude, representing return efficiency per unit of wick stress.",
+        "ic_ret": 0.02907610312104225,
+        "icir": -0.24109022568400595
+    },
+    {
+        "full_range": [
+            0.0,
+            19.800893783569336
+        ],
+        "range_99": [
+            0.5338818740844726,
+            5.0395780944824295
+        ],
+        "range_95": [
+            0.7799908757209778,
+            3.773713445663452
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 15.344524383544922,
+        "col_name": "factor_A_004",
+        "expr": "Div(TsMinMaxDiff($turnover_free,20),Add(TsMean($turnover_free,20),0.0001))",
+        "weight": 0.028372732922434807,
+        "topic": "Short-long turnover acceleration",
+        "description": "Normalizes the 20-day turnover range (max-min) by the mean turnover, detecting widening liquidity spreads relative to average activity.",
+        "ic_ret": 0.028372732922434807,
+        "icir": -0.32935864315992414
+    },
+    {
+        "full_range": [
+            -0.15995043516159058,
+            0.40532782673835754
+        ],
+        "range_99": [
+            -0.0005528090405277908,
+            0.001991052785888319
+        ],
+        "range_95": [
+            -0.0002769980754237622,
+            0.0009211896569468073
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 21603.9609375,
+        "col_name": "factor_A_005",
+        "expr": "TsCov($ret_oc_1d,$intraday_range,30)",
+        "weight": 0.04692208766937256,
+        "topic": "Intraday expansion covariance",
+        "description": "This expression evaluates the covariance between intraday returns and intraday range over 30 days, identifying whether the stock tends to expand its trading range directionally upward (positive) or downward (negative) during active sessions.",
+        "ic_ret": 0.04692208766937256,
+        "icir": -0.4225861129015522
+    },
+    {
+        "full_range": [
+            -1.0,
+            1.0
+        ],
+        "range_99": [
+            -0.8251657223701477,
+            0.8607281112670899
+        ],
+        "range_95": [
+            -0.6985772848129272,
+            0.7367435216903686
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.262871742248535,
+        "col_name": "factor_A_006",
+        "expr": "TsCorr($ret_cc_1d,Abs($ret_cc_1d),30)",
+        "weight": 0.03130534663796425,
+        "topic": "Extreme return span",
+        "description": "Computes correlation between returns and absolute returns to detect volatility clustering associated with extremes.",
+        "ic_ret": 0.03130534663796425,
+        "icir": -0.29444037321131755
+    },
+    {
+        "full_range": [
+            -0.9998160600662231,
+            -0.0
+        ],
+        "range_99": [
+            -0.9968110918998718,
+            -0.00446518223732709
+        ],
+        "range_95": [
+            -0.9783583879470825,
+            -0.024611398577690125
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8098595142364502,
+        "col_name": "factor_A_007",
+        "expr": "Mul(Rank(TsStd($intraday_range,20)),-1.0)",
+        "weight": 0.036796633154153824,
+        "topic": "Low volatility preference",
+        "description": "Replaces WMA with Standard Deviation to measure volatility dispersion, ranked cross-sectionally and inverted for low volatility preference.",
+        "ic_ret": 0.036796633154153824,
+        "icir": 0.2979044002679322
+    },
+    {
+        "full_range": [
+            -1.395892858505249,
+            1.2979727983474731
+        ],
+        "range_99": [
+            -0.03632847726345062,
+            0.02439702443778516
+        ],
+        "range_95": [
+            -0.022235620766878128,
+            0.012052013725042332
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 857.8220825195312,
+        "col_name": "factor_A_008",
+        "expr": "Sub(TsMean($gap_open,20),TsMean($ret_oc_1d,20))",
+        "weight": 0.030456513166427612,
+        "topic": "Overnight-intraday divergence",
+        "description": "This expression calculates the difference between the average overnight gap and the average intraday return over a 20-day window, effectively capturing the structural divergence between off-hours positioning and regular-hours price discovery.",
+        "ic_ret": 0.030456513166427612,
+        "icir": 0.23615107672743718
+    },
+    {
+        "full_range": [
+            0.0,
+            1.0
+        ],
+        "range_99": [
+            0.4884802997112274,
+            0.9763371348381042
+        ],
+        "range_95": [
+            0.6092880249023438,
+            0.957414662837982
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 11.321603775024414,
+        "col_name": "factor_A_009",
+        "expr": "TsCorr(GetLess($ret_oc_1d,0.0),$ret_oc_1d,20)",
+        "weight": 0.030051592737436295,
+        "topic": "Downside intraday concentration",
+        "description": "Correlation between truncated negative returns and total returns, showing how much total movement is explained by downside activity.",
+        "ic_ret": 0.030051592737436295,
+        "icir": 0.2886632750828568
+    },
+    {
+        "full_range": [
+            0.0,
+            3.911789894104004
+        ],
+        "range_99": [
+            0.015062481239438057,
+            0.18110765516757965
+        ],
+        "range_95": [
+            0.02058948390185833,
+            0.12610667645931228
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 789.4658813476562,
+        "col_name": "factor_A_010",
+        "expr": "Greater(Abs($ret_cc_1d),Mul(TsStd($ret_cc_1d,30),2.0))",
+        "weight": 0.03205631673336029,
+        "topic": "Tail risk realization flag",
+        "description": "Binary flag indicating if absolute return exceeds two standard deviations, signaling extreme moves.",
+        "ic_ret": 0.03205631673336029,
+        "icir": -0.22013198896666253
+    },
+    {
+        "full_range": [
+            -947.4151000976562,
+            6156.8017578125
+        ],
+        "range_99": [
+            -79.93779266357421,
+            233.7857513427736
+        ],
+        "range_95": [
+            -53.42881622314453,
+            112.34310760497979
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 983.4820556640625,
+        "col_name": "factor_A_011",
+        "expr": "TsMean(Div($ret_cc_1d,Add($upper_shadow_ratio,0.0001)),30)",
+        "weight": 0.02744239941239357,
+        "topic": "Return sensitivity to wicks",
+        "description": "Average daily return per unit of upper shadow, regularized to avoid division by zero.",
+        "ic_ret": 0.02744239941239357,
+        "icir": -0.25552773135231555
+    },
+    {
+        "full_range": [
+            -0.9998154640197754,
+            -0.0
+        ],
+        "range_99": [
+            -0.9951778054237366,
+            -0.004888136871159077
+        ],
+        "range_95": [
+            -0.9754098653793335,
+            -0.02544529177248478
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.838165283203125,
+        "col_name": "factor_A_012",
+        "expr": "Mul(Rank(TsStd(TsWMA($intraday_range,20),20)),-1.0)",
+        "weight": 0.03305661305785179,
+        "topic": "Low volatility preference",
+        "description": "Targets stability of volatility by ranking the standard deviation of the smoothed intraday range, preferring stable low volatility.",
+        "ic_ret": 0.03305661305785179,
+        "icir": 0.3307718519305626
+    },
+    {
+        "full_range": [
+            0.0,
+            176.9405517578125
+        ],
+        "range_99": [
+            0.06950634866952896,
+            6.384621524810796
+        ],
+        "range_95": [
+            0.11971293091773988,
+            4.465924263000488
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1422.30126953125,
+        "col_name": "factor_A_013",
+        "expr": "TsStd(Div($ret_cc_1d,Add($upper_shadow_ratio,0.01)),20)",
+        "weight": 0.028146136552095413,
+        "topic": "Return sensitivity to wicks",
+        "description": "Measures the 20-day volatility of return efficiency per unit of wick stress, indicating stability of wick-based returns.",
+        "ic_ret": 0.028146136552095413,
+        "icir": -0.2466905117364966
+    },
+    {
+        "full_range": [
+            -85.28609466552734,
+            244.53793334960938
+        ],
+        "range_99": [
+            -0.6245148134231567,
+            0.6433117485046388
+        ],
+        "range_95": [
+            -0.4617483377456665,
+            0.4769799590110778
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 67704.8125,
+        "col_name": "factor_A_014",
+        "expr": "Div(TsMean($ret_cc_1d,30),Add(TsMad($ret_cc_1d,30),0.0001))",
+        "weight": 0.02758939377963543,
+        "topic": "MACD-style return divergence",
+        "description": "Calculates the ratio of mean return to robust volatility (MAD), providing a risk-adjusted return metric similar to Sharpe but robust.",
+        "ic_ret": 0.02758939377963543,
+        "icir": -0.21152632133027532
+    },
+    {
+        "full_range": [
+            -377.90863037109375,
+            10000.0
+        ],
+        "range_99": [
+            2.2296268939971924,
+            74.26464080810547
+        ],
+        "range_95": [
+            4.735952472686768,
+            49.650611877441406
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 22763.595703125,
+        "col_name": "factor_A_015",
+        "expr": "Div(TsMax($upper_shadow_ratio,20),Add(TsMax($ret_cc_1d,20),0.0001))",
+        "weight": 0.027440307661890984,
+        "topic": "Return sensitivity to wicks",
+        "description": "Relates the peak upper shadow size to the peak return magnitude over the lookback window, focusing on extreme values.",
+        "ic_ret": 0.027440307661890984,
+        "icir": 0.2791547693539696
+    },
+    {
+        "full_range": [
+            0.0,
+            2.2321038246154785
+        ],
+        "range_99": [
+            0.006734463199973106,
+            0.09365167945623425
+        ],
+        "range_95": [
+            0.009546190686523914,
+            0.06942699849605558
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1479.027099609375,
+        "col_name": "factor_A_016",
+        "expr": "Greater(TsStd($ret_cc_1d,10),TsMean(TsStd($ret_cc_1d,10),10))",
+        "weight": 0.029617836698889732,
+        "topic": "Tail risk realization flag",
+        "description": "Detects volatility regime shifts by comparing current volatility to its recent average, highlighting periods of unstable risk.",
+        "ic_ret": 0.029617836698889732,
+        "icir": -0.19878684332739582
+    },
+    {
+        "full_range": [
+            0.0,
+            8.851372718811035
+        ],
+        "range_99": [
+            1.2222782373428345,
+            4.723449440002442
+        ],
+        "range_95": [
+            1.789736008644104,
+            4.176904296874998
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 3.9818286895751953,
+        "col_name": "factor_A_017",
+        "expr": "Div(TsMean($intraday_range,30),Add(TsMad($intraday_range,30),0.0001))",
+        "weight": 0.026862066239118576,
+        "topic": "Low volatility preference",
+        "description": "Robust stability ratio using Median Absolute Deviation instead of Standard Deviation to reduce outlier impact on volatility measurement.",
+        "ic_ret": 0.026862066239118576,
+        "icir": 0.2754319959362996
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9995186924934387
+        ],
+        "range_99": [
+            0.25120572090148924,
+            0.8392397165298462
+        ],
+        "range_95": [
+            0.32647465467453,
+            0.7759120464324951
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 3.150966167449951,
+        "col_name": "factor_A_018",
+        "expr": "Div(TsStd(GetLess($ret_oc_1d,0.0),30),Add(TsStd($ret_oc_1d,30),0.0001))",
+        "weight": 0.030581112951040268,
+        "topic": "Downside intraday concentration",
+        "description": "Ratio of downside volatility to total volatility, measuring how much of the return variance is driven by negative moves.",
+        "ic_ret": 0.030581112951040268,
+        "icir": 0.29296838019815225
+    },
+    {
+        "full_range": [
+            -0.15731841325759888,
+            0.7035095691680908
+        ],
+        "range_99": [
+            -0.015695156529545784,
+            0.03217316985130314
+        ],
+        "range_95": [
+            -0.008741690218448638,
+            0.01859963722527027
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 188.46365356445312,
+        "col_name": "factor_A_019",
+        "expr": "TsWMA(Mul($volume_ratio_ln,$ret_cc_1d),30)",
+        "weight": 0.04476453736424446,
+        "topic": "Volume-weighted momentum",
+        "description": "This expression calculates a 30-day weighted moving average of daily returns scaled by their logarithmic volume ratio, effectively upweighting the price action on days with significant market participation.",
+        "ic_ret": 0.04476453736424446,
+        "icir": -0.34188879855134635
+    },
+    {
+        "full_range": [
+            -127.05999755859375,
+            1436.0699462890625
+        ],
+        "range_99": [
+            -0.036581080555915836,
+            0.03177797108888629
+        ],
+        "range_95": [
+            -0.017119716852903366,
+            0.017428947612643207
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 996709.0625,
+        "col_name": "factor_A_020",
+        "expr": "Div(TsMean(Mul($ret_cc_1d,Greater($upper_shadow_ratio,TsMean($upper_shadow_ratio,20))),20),Add(TsMean($upper_shadow_ratio,20),0.0001))",
+        "weight": 0.02800060622394085,
+        "topic": "Return sensitivity to wicks",
+        "description": "Average return on days with above-average wicks, normalized by average wick magnitude to isolate impact.",
+        "ic_ret": 0.02800060622394085,
+        "icir": -0.22471525511080137
+    },
+    {
+        "full_range": [
+            0.0,
+            1.8970427513122559
+        ],
+        "range_99": [
+            0.17853324711322785,
+            0.9020956754684448
+        ],
+        "range_95": [
+            0.21001281440258027,
+            0.5627887964248655
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 39.23099136352539,
+        "col_name": "factor_A_021",
+        "expr": "Div(TsMad($intraday_range,20),Add(TsMean($intraday_range,20),0.0001))",
+        "weight": 0.029347140341997147,
+        "topic": "Low volatility preference",
+        "description": "Uses Median Absolute Deviation instead of Standard Deviation to calculate a robust normalized volatility ratio, reducing sensitivity to outliers in intraday range.",
+        "ic_ret": 0.029347140341997147,
+        "icir": -0.31775611826677996
+    },
+    {
+        "full_range": [
+            -0.9998157620429993,
+            -0.0
+        ],
+        "range_99": [
+            -0.9967637658119202,
+            -0.004751619882881641
+        ],
+        "range_95": [
+            -0.9777777791023254,
+            -0.025153717026114464
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8239926099777222,
+        "col_name": "factor_A_022",
+        "expr": "Mul(Rank(TsMinMaxDiff($intraday_range,30)),-1.0)",
+        "weight": 0.03426478058099747,
+        "topic": "Low volatility preference",
+        "description": "Captures the intraday range spread using Max-Min difference over the window, ranked cross-sectionally and inverted to favor stable ranges.",
+        "ic_ret": 0.03426478058099747,
+        "icir": 0.30627596300287674
+    },
+    {
+        "full_range": [
+            0.0,
+            19.37252426147461
+        ],
+        "range_99": [
+            0.014820340201258659,
+            0.48339396715164185
+        ],
+        "range_95": [
+            0.020488443970680236,
+            0.24808376133441923
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2888.265625,
+        "col_name": "factor_A_023",
+        "expr": "TsMad(Mul($gap_open,10.0),20)",
+        "weight": 0.03564538434147835,
+        "topic": "Scaled gap absolute deviation",
+        "description": "This expression magnifies the overnight gap by a factor of 10 and computes its 20-day median absolute deviation, tracking the evolving volatility specifically tied to overnight news rather than regular trading hours.",
+        "ic_ret": 0.03564538434147835,
+        "icir": -0.26836706364930063
+    },
+    {
+        "full_range": [
+            -1.000001311302185,
+            1.0000009536743164
+        ],
+        "range_99": [
+            -0.7903856253623962,
+            0.8640778779983521
+        ],
+        "range_95": [
+            -0.6491186618804932,
+            0.7724477052688596
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.2844347953796387,
+        "col_name": "factor_A_024",
+        "expr": "TsCorr($intraday_range,$ret_oc_1d,20)",
+        "weight": 0.031358495354652405,
+        "topic": "Directional range expansion asymmetry",
+        "description": "Directly computes the time-series correlation between intraday range and overnight returns, indicating if range expansions are biased towards specific return directions.",
+        "ic_ret": 0.031358495354652405,
+        "icir": -0.3113369334527162
+    },
+    {
+        "full_range": [
+            0.0,
+            0.999590277671814
+        ],
+        "range_99": [
+            0.19085830926895142,
+            0.874693751335144
+        ],
+        "range_95": [
+            0.28329838514328004,
+            0.8079691171646117
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 3.0347321033477783,
+        "col_name": "factor_A_025",
+        "expr": "Div(TsStd(GetLess($ret_oc_1d,0.0),20),Add(TsStd($ret_oc_1d,20),0.0001))",
+        "weight": 0.029042592272162437,
+        "topic": "Downside intraday concentration",
+        "description": "Ratio of downside volatility to total volatility, measuring how much of the return variance is driven by negative returns.",
+        "ic_ret": 0.029042592272162437,
+        "icir": 0.2576703383121412
+    },
+    {
+        "full_range": [
+            -0.949816882610321,
+            1.0
+        ],
+        "range_99": [
+            -0.9335916757583618,
+            0.9750891399383547
+        ],
+        "range_95": [
+            -0.8582446813583373,
+            0.8945800304412841
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.0770790576934814,
+        "col_name": "factor_A_026",
+        "expr": "Sub(TsRank($turnover_free,20),Rank($turnover_free))",
+        "weight": 0.04541045054793358,
+        "topic": "Short-long turnover acceleration",
+        "description": "Calculates the divergence between the time-series rank of turnover (past 20 days) and its cross-sectional rank, signaling regime shifts specific to the stock.",
+        "ic_ret": 0.04541045054793358,
+        "icir": 0.34968341011961346
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998157620429993
+        ],
+        "range_99": [
+            0.004884402267634869,
+            0.9974082708358765
+        ],
+        "range_95": [
+            0.025227921083569537,
+            0.9779264807701109
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.8245183229446411,
+        "col_name": "factor_A_027",
+        "expr": "Rank(Sub(TsMax($ret_cc_1d,30),TsMin($ret_cc_1d,30)))",
+        "weight": 0.027750957757234573,
+        "topic": "Extreme return span",
+        "description": "Computes the cross-sectional rank of the return span to identify stocks with unusually wide return ranges compared to peers.",
+        "ic_ret": 0.027750957757234573,
+        "icir": -0.2282904436394358
+    },
+    {
+        "full_range": [
+            -543.2651977539062,
+            28.64832305908203
+        ],
+        "range_99": [
+            -3.817837953567505,
+            4.067825222015386
+        ],
+        "range_95": [
+            -2.2264538764953614,
+            2.1722964763641315
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 5474.2548828125,
+        "col_name": "factor_A_028",
+        "expr": "Div(TsDelta($turnover_free,30),Add(TsMean($turnover_free,30),0.0001))",
+        "weight": 0.03009655326604843,
+        "topic": "Short-long turnover acceleration",
+        "description": "Recent change in turnover normalized by average turnover level, measuring relative acceleration intensity.",
+        "ic_ret": 0.03009655326604843,
+        "icir": -0.2992833361107688
+    },
+    {
+        "full_range": [
+            -1.0,
+            1.0
+        ],
+        "range_99": [
+            -0.8980198073387146,
+            0.9183195424079897
+        ],
+        "range_95": [
+            -0.7885413408279419,
+            0.8095831871032715
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 2.096714496612549,
+        "col_name": "factor_A_029",
+        "expr": "TsCorr($ret_cc_1d,Abs($ret_cc_1d),20)",
+        "weight": 0.030492084100842476,
+        "topic": "Extreme return span",
+        "description": "Computes the 20-day correlation between returns and their absolute values to detect if extreme moves are directionally biased.",
+        "ic_ret": 0.030492084100842476,
+        "icir": -0.2636415342824627
+    },
+    {
+        "full_range": [
+            -0.07100231945514679,
+            0.48207589983940125
+        ],
+        "range_99": [
+            -0.004538070801645518,
+            0.014307786785066131
+        ],
+        "range_95": [
+            -0.0021096491254866123,
+            0.00864654220640659
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 792.7246704101562,
+        "col_name": "factor_A_030",
+        "expr": "TsCov($ret_cc_1d,$volume_ratio_ln,30)",
+        "weight": 0.03688232600688934,
+        "topic": "Return-volume correlation",
+        "description": "Computes raw covariance between returns and volume, capturing unnormalized co-movement magnitude.",
+        "ic_ret": 0.03688232600688934,
+        "icir": -0.3596620025713754
+    },
+    {
+        "full_range": [
+            -23.618545532226562,
+            47.8590202331543
+        ],
+        "range_99": [
+            -0.15063518047332763,
+            0.16779437243938447
+        ],
+        "range_95": [
+            -0.09884303510189056,
+            0.10515640825033179
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 60001.16796875,
+        "col_name": "factor_A_031",
+        "expr": "Div(TsWMA($ret_cc_1d,30),Add(TsMinMaxDiff($ret_cc_1d,30),0.0001))",
+        "weight": 0.027479728683829308,
+        "topic": "Volatility-adjusted momentum",
+        "description": "Weighted moving average of returns normalized by recent price range, offering a robust volatility adjustment using high-low spread proxy.",
+        "ic_ret": 0.027479728683829308,
+        "icir": -0.20645558660151087
+    },
+    {
+        "full_range": [
+            0.0,
+            0.9998165965080261
+        ],
+        "range_99": [
+            0.004264787770807743,
+            0.9964383983612061
+        ],
+        "range_95": [
+            0.023870417848229408,
+            0.9774404168128967
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1.7975655794143677,
+        "col_name": "factor_A_032",
+        "expr": "Rank(TsStd($turnover_free,10))",
+        "weight": 0.05222221463918686,
+        "topic": "Cross-sectional liquidity momentum",
+        "description": "Ranks the 10-day rolling standard deviation of turnover, capturing stocks with unusually unstable liquidity patterns.",
+        "ic_ret": 0.05222221463918686,
+        "icir": -0.37659758696778084
+    },
+    {
+        "full_range": [
+            0.0,
+            1.0
+        ],
+        "range_99": [
+            0.537514328956604,
+            0.9617043542861939
+        ],
+        "range_95": [
+            0.6331411957740783,
+            0.9413107633590698
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 9.585728645324707,
+        "col_name": "factor_A_033",
+        "expr": "TsCorr($ret_oc_1d,GetLess($ret_oc_1d,0.0),30)",
+        "weight": 0.031097829341888428,
+        "topic": "Downside intraday concentration",
+        "description": "Correlation between total returns and their downside component, measuring how much downside drives overall return variation.",
+        "ic_ret": 0.031097829341888428,
+        "icir": 0.322591435141359
+    },
+    {
+        "full_range": [
+            0.0,
+            14.057235717773438
+        ],
+        "range_99": [
+            0.06337222754955292,
+            2.218892889022828
+        ],
+        "range_95": [
+            0.0937287837266922,
+            1.3936557769775368
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 25.136201858520508,
+        "col_name": "factor_A_034",
+        "expr": "Div(TsStd($turnover_free,10),Add(TsMean($turnover_free,50),0.0001))",
+        "weight": 0.027268124744296074,
+        "topic": "Short-long turnover acceleration",
+        "description": "Ratio of short-term turnover volatility to long-term average turnover, highlighting unstable liquidity acceleration.",
+        "ic_ret": 0.027268124744296074,
+        "icir": -0.300125375388152
+    },
+    {
+        "full_range": [
+            -1146.9202880859375,
+            4500.0
+        ],
+        "range_99": [
+            -0.10813495129346848,
+            0.14046390891075147
+        ],
+        "range_95": [
+            -0.05981192290782928,
+            0.0780461817979812
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 40658.42578125,
+        "col_name": "factor_A_035",
+        "expr": "TsMean(Div($ret_cc_1d,Add(TsStd($upper_shadow_ratio,20),0.0001)),20)",
+        "weight": 0.0295115876942873,
+        "topic": "Return sensitivity to wicks",
+        "description": "Computes the 20-day average return standardized by the volatility of the upper shadow ratio, assessing risk-adjusted sensitivity.",
+        "ic_ret": 0.0295115876942873,
+        "icir": -0.22821961106406238
+    },
+    {
+        "full_range": [
+            -0.9999861121177673,
+            Infinity
+        ],
+        "range_99": [
+            -0.903247013092041,
+            20.652825012207188
+        ],
+        "range_95": [
+            -0.8184143900871277,
+            5.945080184936513
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 0.0,
+        "col_name": "factor_A_036",
+        "expr": "TsPctChange($turnover_free,30)",
+        "weight": 0.03881401941180229,
+        "topic": "Short-long turnover acceleration",
+        "description": "Percentage change in turnover over the rolling window, directly capturing acceleration momentum.",
+        "ic_ret": 0.03881401941180229,
+        "icir": -0.33430794681416814
+    },
+    {
+        "full_range": [
+            0.8960499167442322,
+            6536.42626953125
+        ],
+        "range_99": [
+            1.6961085796356201,
+            104.42466735839844
+        ],
+        "range_95": [
+            2.165694236755371,
+            21.384765625
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 1303.3836669921875,
+        "col_name": "factor_A_037",
+        "expr": "Div(TsMax($turnover_free,20),Add(TsMin($turnover_free,20),0.0001))",
+        "weight": 0.03216532990336418,
+        "topic": "Short-long turnover acceleration",
+        "description": "Range ratio of turnover within the window, measuring volatility expansion relative to the floor.",
+        "ic_ret": 0.03216532990336418,
+        "icir": -0.33470342707109224
+    },
+    {
+        "full_range": [
+            0.0,
+            10978.8798828125
+        ],
+        "range_99": [
+            0.02599110543727875,
+            0.41664907336235046
+        ],
+        "range_95": [
+            0.035889217257499696,
+            0.24590642750263209
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 20067.341796875,
+        "col_name": "factor_A_038",
+        "expr": "Div(TsStd($ret_cc_1d,30),Add(TsMean($upper_shadow_ratio,30),0.0001))",
+        "weight": 0.028042109683156013,
+        "topic": "Return sensitivity to wicks",
+        "description": "Calculates the ratio of return volatility to average upper shadow size, measuring how much return fluctuation is associated with each unit of wick magnitude.",
+        "ic_ret": 0.028042109683156013,
+        "icir": -0.21644878118491667
+    },
+    {
+        "full_range": [
+            -19.5255184173584,
+            -0.0
+        ],
+        "range_99": [
+            -1.1985816955566406,
+            -0.044566106349229806
+        ],
+        "range_95": [
+            -0.5881222963333129,
+            -0.06343299895524981
+        ],
+        "missing_rate": 0.0,
+        "kurtosis": 876.9339599609375,
+        "col_name": "factor_A_039",
+        "expr": "Mul(Div(TsVar($intraday_range,20),Add(Pow(TsMean($intraday_range,20),2.0),0.0001)),-1.0)",
+        "weight": 0.02783859148621559,
+        "topic": "Low volatility preference",
+        "description": "Normalized variance (variance over mean squared), penalizing assets with high relative variability in range.",
+        "ic_ret": 0.02783859148621559,
+        "icir": 0.3054153481489384
+    }
+]
