@@ -1,0 +1,173 @@
+# 因子挖掘任务规范示例
+# 定义一次完整的因子挖掘任务配置
+
+job_id: "cn.a_share.equity.daily.pv_ts_core.20200101_20201231.v1"
+dataset_id: "cn.a_share.equity.daily.v1"
+family_id: "pv_ts_core"
+segment_name: "train_2020"
+freq_group: "eod"
+domain: "A"
+created_at: "2026-04-22T10:00:00Z"
+version: "1.0"
+
+# 数据集配置
+dataset:
+  start_date: "20200101"
+  end_date: "20201231"
+  test_start_date: "20210101"
+  test_end_date: "20211231"
+  layers_enabled: ["raw", "atomic"]
+  max_backtrack_days: 100
+  max_future_days: 30
+  sample_pool_path: "data/basic/feature_ready/sample_pool_200.json"
+  daily_path: "data/basic/daily.parquet"
+
+# 因子族配置
+family:
+  search_space:
+    operator_whitelist:
+      - Ref
+      - TsMean
+      - TsStd
+      - TsRank
+      - TsDelta
+      - TsCorr
+      - TsCov
+      - Add
+      - Sub
+      - Mul
+      - Div
+      - Rank
+    delta_times: [5, 10, 20, 40, 60]
+    constants: [0.5, 1.0, 2.0]
+    max_expr_length: 18
+    min_ts_operator_count: 1
+    forbid_operators: [Greater, Less, Pow]
+    feature_scopes:
+      raw: [open, high, low, close, vwap, amount, volume, turnover]
+      atomic: [ret_5, ret_10, vwap_dev, amount_z20, corr_close_volume_20]
+  
+  pool_config:
+    capacity: 200
+    ssl_weight: 1.0
+    nov_weight: 0.3
+    ic_threshold: 0.01
+    ic_mut_threshold: 0.95
+    max_expr_length: 18
+
+# 训练配置
+training:
+  n_episodes: 10000
+  log_freq: 1000
+  entropy_coef: 0.01
+  entropy_temperature: 1.0
+  mask_dropout_prob: 1.0
+  weight_decay_type: "linear"
+  final_weight_ratio: 0.0
+  encoder_type: "gnn"
+  label_days: 10
+  ssl_weight: 1.0
+  nov_weight: 0.3
+  cuda: 0
+  seed: 0
+  
+  # 权重调度
+  weight_scheduler:
+    initial_ssl_weight: 1.0
+    initial_nov_weight: 0.3
+    final_ratio: 0.0
+    total_steps: 10000
+    scheduler_type: "linear"
+
+# 输出配置
+output:
+  output_dir: "data/gfn_logs"
+  run_name: null
+  candidate_export_freq: 1000
+  final_candidate_path: "data/gfn_logs/candidates/final_candidates.json"
+  
+  # 检查点配置
+  checkpoint:
+    save_model: true
+    save_pool: true
+    save_metrics: true
+    frequency: 1000
+  
+  # 缓存配置
+  cache:
+    enabled: true
+    cache_root: "data/cache"
+    max_size_gb: 10
+    
+  # 日志配置
+  logging:
+    level: "INFO"
+    save_logs: true
+    save_tensorboard: true
+    metrics_file: "metrics.jsonl"
+
+# 验证配置
+validation:
+  enabled: true
+  validation_split: 0.2
+  early_stopping:
+    enabled: true
+    patience: 1000
+    min_delta: 0.001
+  
+# 筛选配置（用于后续筛选阶段）
+screening:
+  enabled: true
+  output_dir: "data/screening_results"
+  
+  # 筛选指标权重
+  metrics_weights:
+    icir: 0.45
+    topk_return: 0.30
+    stability: 0.25
+  
+  # 稳定性指标
+  stability_metrics:
+    - ic_positive_ratio
+    - monthly_icir
+    - rolling_icir_p25
+    - yearly_sign_consistency
+  
+  # TopK配置
+  topk_config:
+    topk_list: [0.05, 0.10, 0.20]
+    primary_topk: 0.10
+  
+  # 冗余控制
+  redundancy_control:
+    exact_duplicate_threshold: 1.0
+    high_correlation_threshold: 0.98
+    active_pool_correlation_threshold: 0.995
+
+# 生命周期配置
+lifecycle:
+  enabled: true
+  registry_path: "data/lifecycle/factor_registry.parquet"
+  
+  # 状态转换规则
+  status_transitions:
+    candidate:
+      next: [validated, watch]
+      conditions:
+        - "icir > 0.5 and stability_score > 0.6"
+    validated:
+      next: [active, watch, retired]
+      conditions:
+        - "oos_performance > 0.4"
+    active:
+      next: [watch, retired]
+      conditions:
+        - "recent_performance < 0.2"
+    watch:
+      next: [active, retired]
+      conditions:
+        - "performance_recovery > 0.3"
+    retired:
+      next: [candidate]
+      conditions:
+        - "never"

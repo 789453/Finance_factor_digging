@@ -1,0 +1,22 @@
+feature_name,formula,source_cols,description,category,domain,freq_group,fill_policy,status,created_at,version
+ret_1,Ref($close, -1) / $close - 1,close,1日收益率,momentum,A,eod,forward,active,2026-04-22,1.0
+ret_5,Ref($close, -5) / $close - 1,close,5日收益率,momentum,A,eod,forward,active,2026-04-22,1.0
+ret_10,Ref($close, -10) / $close - 1,close,10日收益率,momentum,A,eod,forward,active,2026-04-22,1.0
+ret_20,Ref($close, -20) / $close - 1,close,20日收益率,momentum,A,eod,forward,active,2026-04-22,1.0
+vol_5,TsStd(Ref($close, -1) / $close - 1, 5),close,5日波动率,volatility,A,eod,forward,active,2026-04-22,1.0
+vol_10,TsStd(Ref($close, -1) / $close - 1, 10),close,10日波动率,volatility,A,eod,forward,active,2026-04-22,1.0
+vol_20,TsStd(Ref($close, -1) / $close - 1, 20),close,20日波动率,volatility,A,eod,forward,active,2026-04-22,1.0
+hl_spread,($high - $low) / $close,"high,low,close",高低价差,volatility,A,eod,forward,active,2026-04-22,1.0
+oc_gap,($open - Ref($close, -1)) / Ref($close, -1),"open,close",开盘缺口,volatility,A,eod,forward,active,2026-04-22,1.0
+vwap_dev,($close - TsMean($close, 20)) / TsStd($close, 20),close,收盘价相对20日均值偏离度,deviation,A,eod,forward,active,2026-04-22,1.0
+amt_z20,($amount - TsMean($amount, 20)) / TsStd($amount, 20),amount,成交额20日标准化,deviation,A,eod,forward,active,2026-04-22,1.0
+turnover_z20,($turnover - TsMean($turnover, 20)) / TsStd($turnover, 20),turnover,换手率20日标准化,deviation,A,eod,forward,active,2026-04-22,1.0
+volume_cv_20,TsStd($volume, 20) / TsMean($volume, 20),volume,成交量20日变异系数,deviation,A,eod,forward,active,2026-04-22,1.0
+ret_rank_20,Rank(Ref($close, -20) / $close - 1),close,20日收益率排名,rank,A,eod,forward,active,2026-04-22,1.0
+turnover_rank_20,Rank($turnover),turnover,换手率排名,rank,A,eod,forward,active,2026-04-22,1.0
+amount_rank_20,Rank($amount),amount,成交额排名,rank,A,eod,forward,active,2026-04-22,1.0
+corr_close_volume_20,TsCorr($close, $volume, 20),"close,volume",收盘价与成交量20日相关性,correlation,A,eod,forward,active,2026-04-22,1.0
+corr_ret_amount_20,TsCorr(Ref($close, -1) / $close - 1, $amount, 20),"close,amount",收益率与成交额20日相关性,correlation,A,eod,forward,active,2026-04-22,1.0
+skew_ret_20,TsSkew(Ref($close, -1) / $close - 1, 20),close,20日收益率偏度,stability,A,eod,forward,active,2026-04-22,1.0
+kurt_ret_20,TsKurt(Ref($close, -1) / $close - 1, 20),close,20日收益率峰度,stability,A,eod,forward,active,2026-04-22,1.0
+downside_vol_20,TsStd(Min(Ref($close, -1) / $close - 1, 0), 20),close,20日下行波动率,stability,A,eod,forward,active,2026-04-22,1.0

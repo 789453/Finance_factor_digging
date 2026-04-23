@@ -1,0 +1,14 @@
+{
+    "min_ic_train": 0.02,
+    "min_ic_test": 0.01,
+    "min_icir": 0.5,
+    "max_turnover": 0.8,
+    "min_stability": -0.1,
+    "min_topk_return": 0.05,
+    "min_topk_sharpe": 0.5,
+    "topk_size": 50,
+    "icir_window": 20,
+    "turnover_window": 20,
+    "stability_window": 60,
+    "description": "Default screening configuration for A-share factors"
+}

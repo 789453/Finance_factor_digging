@@ -1,0 +1,85 @@
+# 因子族配置文件示例
+# 每个因子族定义独立的搜索空间配置
+
+family_id: pv_ts_core
+enabled_layers: [raw, atomic]
+allowed_domains: [A]
+allowed_freq_groups: [eod]
+operator_whitelist:
+  - Ref
+  - TsMean
+  - TsStd
+  - TsRank
+  - TsDelta
+  - TsCorr
+  - TsCov
+  - Add
+  - Sub
+  - Mul
+  - Div
+  - Rank
+delta_times: [5, 10, 20, 40, 60]
+constants: [0.5, 1.0, 2.0]
+max_expr_length: 18
+min_ts_operator_count: 1
+forbid_operators: [Greater, Less, Pow]
+feature_scopes:
+  raw: [open, high, low, close, vwap, amount, volume, turnover]
+  atomic: [ret_5, ret_10, vwap_dev, amount_z20, corr_close_volume_20]
+sample_budget: 20000
+pool_capacity: 200
+
+---
+
+family_id: vol_mean_revert
+enabled_layers: [atomic]
+allowed_domains: [A]
+allowed_freq_groups: [eod]
+operator_whitelist:
+  - Ref
+  - TsMean
+  - TsStd
+  - TsRank
+  - TsDelta
+  - Add
+  - Sub
+  - Mul
+  - Div
+  - Rank
+  - Min
+  - Max
+delta_times: [10, 20, 40]
+constants: [0.5, 1.0, 1.5, 2.0]
+max_expr_length: 15
+min_ts_operator_count: 2
+forbid_operators: [Greater, Less, Pow, And, Or]
+feature_scopes:
+  atomic: [vol_5, vol_10, vol_20, hl_spread, oc_gap, ret_5, ret_10, ret_20]
+sample_budget: 15000
+pool_capacity: 150
+
+---
+
+family_id: momentum_rank_combo
+enabled_layers: [raw, atomic]
+allowed_domains: [A]
+allowed_freq_groups: [eod]
+operator_whitelist:
+  - Ref
+  - TsMean
+  - TsRank
+  - Rank
+  - Add
+  - Sub
+  - Mul
+  - Div
+delta_times: [5, 10, 20, 60]
+constants: [0.5, 1.0, 2.0]
+max_expr_length: 12
+min_ts_operator_count: 1
+forbid_operators: [Greater, Less, Pow, And, Or, If]
+feature_scopes:
+  raw: [close, volume, amount, turnover]
+  atomic: [ret_rank_20, turnover_rank_20, amount_rank_20, ret_5, ret_10, ret_20]
+sample_budget: 18000
+pool_capacity: 180

@@ -1,0 +1,51 @@
+# A股价格-成交量时序因子挖掘作业
+job_id: a_share_pv_ts_2020_2021
+name: "A股价格-成交量时序因子挖掘2020-2021"
+description: "基于价格-成交量时序特征挖掘Alpha因子，训练期2020年，测试期2021年"
+tags: ["pv", "ts", "a_share", "2020", "2021"]
+priority: high
+owner: "research_team"
+version: "1.0"
+
+# 数据集配置
+dataset_id: "cn.a_share.equity.daily.v1"
+family_id: "pv_ts_core"
+segment_name: "2020_2021"
+
+# 时间范围
+train_start: "20200101"
+train_end: "20201231"
+test_start: "20210101"
+test_end: "20211231"
+
+# 训练参数
+n_episodes: 15000
+pool_capacity: 100
+encoder_type: "gnn"
+entropy_coef: 0.01
+entropy_temperature: 1.0
+ssl_weight: 1.0
+nov_weight: 0.3
+weight_decay_type: "linear"
+final_weight_ratio: 0.0
+
+# 表达式约束
+max_expr_length: 18
+label_days: 10
+mask_dropout_prob: 1.0
+
+# 数据配置
+status_filter: ["active", "watch"]
+max_backtrack_days: 100
+max_future_days: 30
+use_filled: true
+
+# 日志和输出
+log_freq: 1000
+cache_root: "data/cache"
+output_dir: null
+run_name: "pv_ts_2020_2021_v1"
+
+# 系统配置
+seed: 42
+cuda: 0
