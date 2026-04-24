@@ -1,0 +1,46 @@
+{
+  "job_id": "test_job_001",
+  "timestamp": "2026-04-24T22:36:42.333373",
+  "recovery_status": {
+    "can_recover": false,
+    "reason": "Job appears to be running normally",
+    "suggested_action": "wait_or_force_restart",
+    "running_info": {
+      "current_episode": 100,
+      "last_update": "2026-04-24T22:36:42.307452",
+      "minutes_since_update": 0.00043201666666666666
+    }
+  },
+  "recovery_plan": {
+    "plan": "no_recovery_needed",
+    "reason": "Job appears to be running normally",
+    "details": {
+      "can_recover": false,
+      "reason": "Job appears to be running normally",
+      "suggested_action": "wait_or_force_restart",
+      "running_info": {
+        "current_episode": 100,
+        "last_update": "2026-04-24T22:36:42.307452",
+        "minutes_since_update": 0.00043201666666666666
+      }
+    }
+  },
+  "current_progress": {
+    "job_id": "test_job_001",
+    "total_episodes": 1000,
+    "current_episode": 100,
+    "start_time": "2026-04-24T22:36:42.299937",
+    "last_update": "2026-04-24T22:36:42.307452",
+    "checkpoints": [
+      100
+    ],
+    "best_metrics": {
+      "best_ic": 0.15
+    },
+    "status": "running",
+    "config_hash": "test_config_hash"
+  },
+  "recommendations": [
+    "No recovery needed. Job appears to be in a normal state."
+  ]
+}

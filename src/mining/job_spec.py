@@ -443,3 +443,30 @@ if __name__ == "__main__":
         print(f"Validation errors: {errors}")
     else:
         print("✓ Specification is valid")
+    @property
+    def domain(self) -> str:
+        """获取域 - 从dataset_id中提取"""
+        dataset_id = self.raw.get("dataset_id", "")
+        # 从dataset_id中提取域，例如 "cn.a_share.equity.daily.v1" -> "A"
+        if ".a_share." in dataset_id:
+            return "A"
+        elif "pv_daily" in dataset_id:
+            return "pv_daily"
+        elif "moneyflow" in dataset_id:
+            return "moneyflow"
+        else:
+            return "A"  # 默认域
+
+    @property
+    def domain(self) -> str:
+        """获取域 - 从dataset_id中提取"""
+        dataset_id = self.raw.get("dataset_id", "")
+        # 从dataset_id中提取域，例如 "cn.a_share.equity.daily.v1" -> "A"
+        if ".a_share." in dataset_id:
+            return "A"
+        elif "pv_daily" in dataset_id:
+            return "pv_daily"
+        elif "moneyflow" in dataset_id:
+            return "moneyflow"
+        else:
+            return "A"  # 默认域

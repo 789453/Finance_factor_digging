@@ -1,0 +1,13 @@
+# DataHub Configuration for Tushare Data Project
+
+data_project_root: "D:/Trading/data_ever_26_3_14/data"
+warehouse_path: "meta/warehouse.duckdb"
+control_db_path: "meta/control.sqlite3"
+schema_metadata_path: "meta/schema_metadata.json"
+integrity_summary_path: "meta/data_integrity_summary.json"
+catalog_root: "catalog"
+
+# Default settings
+timezone: "Asia/Shanghai"
+default_date_col: "trade_date"
+default_symbol_col: "ts_code"
