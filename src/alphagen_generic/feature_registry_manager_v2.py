@@ -4,7 +4,16 @@ import os
 import logging
 import sys
 from pathlib import Path
-from utils.path_utils import map_path, FACTOR_READY_DIR
+try:
+    from utils.path_utils import map_path, FACTOR_READY_DIR
+except ImportError:
+    try:
+        from src.utils.path_utils import map_path, FACTOR_READY_DIR
+    except ImportError:
+        # Fallback definitions if path_utils is not available
+        FACTOR_READY_DIR = "data/factor_ready"
+        def map_path(path: str) -> str:
+            return path
 from typing import List, Dict, Optional, Set, Union
 from datetime import datetime
 
@@ -262,18 +271,36 @@ class FeatureRegistryManagerV2:
         info = self.get_feature_info(feature_name, layer)
         return info.get('fill_policy', 'none')
     
-    def create_feature_enum(self, domain: str, status_filter: List[str] = ['active', 'watch']) -> IntEnum:
+    def create_feature_enum(self, domain: str, status_filter: List[str] = ['active', 'watch'], layers: List[str] = None) -> IntEnum:
         """
         动态创建FeatureType IntEnum
         
         Args:
             domain: 域标识
             status_filter: 允许的状态列表
+            layers: 指定要包含的层，如果为None则使用所有启用的层
             
         Returns:
             IntEnum类
         """
-        features = self.get_features_by_domain(domain, status_filter)
+        # 如果没有指定层，使用所有启用的层
+        if layers is None:
+            layers = []
+            if self.layer_config["raw"]["enabled"]:
+                layers.append("raw")
+            if self.layer_config["atomic"]["enabled"]:
+                layers.append("atomic")
+        
+        features = []
+        for layer in layers:
+            if layer == "raw" and self.layer_config["raw"]["enabled"]:
+                raw_features = self.get_features_by_domain_and_layer(domain, "raw", status_filter)
+                features.extend(raw_features)
+            elif layer == "atomic" and self.layer_config["atomic"]["enabled"]:
+                atomic_features = self.get_features_by_domain_and_layer(domain, "atomic", status_filter)
+                # 为原子特征添加前缀以避免冲突
+                atomic_features_prefixed = [f"atomic_{f}" for f in atomic_features]
+                features.extend(atomic_features_prefixed)
         
         enum_dict = {'CLOSE': 0}  # 保留CLOSE作为目标计算
         idx = 1

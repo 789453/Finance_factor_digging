@@ -37,11 +37,26 @@ class DatasetMeta:
         "close": "close"
     }
     
-    def __init__(self, meta_path: str):
-        self.meta_path = meta_path
-        self.raw: Dict[str, Any] = self._load()
-        self._validate_required_fields()
-        self._normalize_meta()
+    def __init__(self, meta_source: str | Dict[str, Any]):
+        """
+        支持两种构造方式：
+        1. meta_path: str - 从JSON文件加载
+        2. meta_source: Dict[str, Any] - 直接从字典构造
+        """
+        if isinstance(meta_source, dict):
+            # 从字典直接构造
+            self.meta_path = "<memory>"
+            self.raw: Dict[str, Any] = meta_source.copy()
+            self._validate_required_fields()
+            self._normalize_meta()
+        elif isinstance(meta_source, str):
+            # 从文件路径加载
+            self.meta_path = meta_source
+            self.raw: Dict[str, Any] = self._load()
+            self._validate_required_fields()
+            self._normalize_meta()
+        else:
+            raise ValueError(f"meta_source must be str or dict, got {type(meta_source)}")
     
     def _load(self) -> Dict[str, Any]:
         if not os.path.exists(self.meta_path):
@@ -186,6 +201,10 @@ class DatasetMeta:
     def is_valid(self) -> bool:
         """检查 meta 是否有效"""
         return len(self.validate()) == 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """将meta对象转换为字典"""
+        return self.raw.copy()
     
     def to_loader_kwargs(self) -> Dict[str, Any]:
         """转换为 ParquetFeatureLoader.__init__() 的参数 dict - 升级版支持多层"""
@@ -441,4 +460,8 @@ class DatasetMeta:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(meta_dict, f, indent=2, ensure_ascii=False)
         
-        return DatasetMeta(output_path if output_path else "<memory>")
+        if output_path:
+            return DatasetMeta(output_path)
+        else:
+            # 直接返回从字典构造的DatasetMeta对象
+            return DatasetMeta(meta_dict)

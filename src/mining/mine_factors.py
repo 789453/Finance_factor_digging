@@ -135,7 +135,7 @@ class MiningContext:
         
         # 训练数据加载器
         train_loader = ParquetFeatureLoaderV2(
-            domain=self.job_spec.dataset_id.split('.')[2] if '.' in self.job_spec.dataset_id else 'A',
+            domain=self.dataset_meta.domain,
             start_time=self.job_spec.train_start,
             end_time=self.job_spec.train_end,
             registry_manager=registry_manager,
@@ -151,7 +151,7 @@ class MiningContext:
         
         # 测试数据加载器
         test_loader = ParquetFeatureLoaderV2(
-            domain=self.job_spec.dataset_id.split('.')[2] if '.' in self.job_spec.dataset_id else 'A',
+            domain=self.dataset_meta.domain,
             start_time=self.job_spec.test_start,
             end_time=self.job_spec.test_end,
             registry_manager=registry_manager,
@@ -173,7 +173,7 @@ class MiningContext:
         
         registry_manager = FeatureRegistryManagerV2()
         layers = self.family_spec.get('enabled_layers', ['raw', 'filled'])
-        domain = self.job_spec.dataset_id.split('.')[2] if '.' in self.job_spec.dataset_id else 'A'
+        domain = self.dataset_meta.domain
         
         feature_enum = registry_manager.create_feature_enum(domain, self.job_spec.status_filter, layers)
         close = Feature(feature_enum.CLOSE)
@@ -217,7 +217,7 @@ def build_mining_context(job_spec_path: str, dataset_meta_path: Optional[str] = 
         # 创建默认数据集元数据
         dataset_meta = DatasetMeta({
             "dataset_id": job_spec.dataset_id,
-            "domain": job_spec.dataset_id.split('.')[2] if '.' in job_spec.dataset_id else 'A',
+            "domain": "A",  # 默认域，后续可以从job_spec或配置中获取
             "freq_group": "eod",
             "layers_enabled": family_spec.get('enabled_layers', ['raw', 'filled'])
         })

@@ -102,9 +102,48 @@ def compute_ric_series(f_slice: torch.Tensor, target_slice: torch.Tensor, args) 
         
     return torch.tensor(ric_s, dtype=f_slice.dtype, device=f_slice.device)
 
+def compute_topk_returns(x: torch.Tensor, y_ret: torch.Tensor, k_ratio: float = 0.1) -> torch.Tensor:
+    """
+    Compute TopK returns series.
+    x: predictions (days, stocks)
+    y_ret: returns (days, stocks)
+    k_ratio: top k ratio (default 10%)
+    """
+    ret_s = []
+    for d in range(x.size(0)):
+        mask = ~(torch.isnan(x[d]) | torch.isnan(y_ret[d]))
+        if mask.sum() < 2:
+            ret_s.append(0.0)
+            continue
+        
+        valid_x = x[d, mask]
+        valid_ret = y_ret[d, mask]
+        k = max(1, int(k_ratio * valid_x.size(0)))
+        _, indices = torch.topk(valid_x, k)
+        ret_s.append(valid_ret[indices].mean().item())
+    return torch.tensor(ret_s, dtype=x.dtype, device=x.device)
+
+def compute_stability_score(ic_s: torch.Tensor, window: int = 20) -> float:
+    """
+    Compute stability score based on IC stability.
+    ic_s: IC series (days,)
+    window: rolling window for stability calculation
+    """
+    if len(ic_s) < window:
+        return 0.0
+    
+    # Compute rolling standard deviation
+    stability_scores = []
+    for i in range(window, len(ic_s)):
+        window_ic = ic_s[i-window:i]
+        stability = 1.0 / (window_ic.std().item() + 1e-8)  # Higher stability = lower std
+        stability_scores.append(stability)
+    
+    return torch.tensor(stability_scores, dtype=ic_s.dtype).mean().item()
+
 def get_tensor_metrics_safe(x: torch.Tensor, y: torch.Tensor, y_ret: torch.Tensor, args) -> tuple:
     """
-    Compute safe tensor metrics.
+    Compute safe tensor metrics with ICIR/TopK/Stability as main metrics.
     x: predictions (days, stocks)
     y: targets (days, stocks)
     y_ret: returns (days, stocks)
@@ -122,7 +161,7 @@ def get_tensor_metrics_safe(x: torch.Tensor, y: torch.Tensor, y_ret: torch.Tenso
     y = y.to(device)
     y_ret = y_ret.to(device)
     
-    # Calculate IC
+    # Calculate IC series
     ic_s = []
     for d in range(x.size(0)):
         mask = ~(torch.isnan(x[d]) | torch.isnan(y[d]))
@@ -136,7 +175,14 @@ def get_tensor_metrics_safe(x: torch.Tensor, y: torch.Tensor, y_ret: torch.Tenso
     # Calculate RIC safely
     ric_s = compute_ric_series(x, y, args)
     
-    # Calculate Returns
+    # Calculate TopK returns (main metric)
+    k_ratio = getattr(args, "topk_ratio", 0.1)
+    topk_ret_s = compute_topk_returns(x, y_ret, k_ratio)
+    
+    # Calculate stability score
+    stability_score = compute_stability_score(ic_s, window=getattr(args, "stability_window", 20))
+    
+    # Legacy metrics for backward compatibility
     ret_s = []
     for d in range(x.size(0)):
         mask = ~(torch.isnan(x[d]) | torch.isnan(y_ret[d]))
@@ -151,9 +197,17 @@ def get_tensor_metrics_safe(x: torch.Tensor, y: torch.Tensor, y_ret: torch.Tenso
         ret_s.append(valid_ret[indices].mean().item())
     ret_s = torch.tensor(ret_s, device=device)
     
+    # Main metrics: ICIR, TopK Return, Stability
     metrics = {
-        "ic": ic_s.mean().item(),
+        # Main metrics (ICIR/TopK/Stability)
         "icir": ic_s.mean().item() / (ic_s.std().item() + 1e-8),
+        "topk_ret": topk_ret_s.mean().item(),
+        "topk_ret_std": topk_ret_s.std().item(),
+        "topk_retir": topk_ret_s.mean().item() / (topk_ret_s.std().item() + 1e-8),
+        "stability": stability_score,
+        
+        # Legacy metrics for backward compatibility
+        "ic": ic_s.mean().item(),
         "ric": ric_s.mean().item(),
         "ricir": ric_s.mean().item() / (ric_s.std().item() + 1e-8),
         "ret": ret_s.mean().item()

@@ -51,7 +51,7 @@ try:
     from alpha_gfn.config import *
     from alpha_gfn.env.core import GFNEnvCore
     from alpha_gfn.modules import SequenceEncoder
-    from alpha_gfn.alpha_pool import AlphaPoolGFN
+    from alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
     from alpha_gfn.gflownet import EntropyTBGFlowNet
     from alpha_gfn.search_space import build_search_space
     from alpha_gfn.cache_manager import CacheManager
@@ -59,7 +59,7 @@ except ImportError:
     from src.alpha_gfn.config import *
     from src.alpha_gfn.env.core import GFNEnvCore
     from src.alpha_gfn.modules import SequenceEncoder
-    from src.alpha_gfn.alpha_pool import AlphaPoolGFN
+    from src.alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
     from src.alpha_gfn.gflownet import EntropyTBGFlowNet
     from src.alpha_gfn.search_space import build_search_space
     from src.alpha_gfn.cache_manager import CacheManager
@@ -362,24 +362,44 @@ def build_gfn_components(job_ctx: Dict[str, Any], train_data: ParquetFeatureLoad
     """构建GFN组件"""
     logger.info("Building GFN components...")
     
-    # 初始化AlphaPoolGFN
+    # 初始化AlphaPoolGFN v2
     pool_capacity = job_ctx.get('job_spec', {}).get('pool_capacity', 50) if job_ctx.get('job_spec') else 50
-    pool = AlphaPoolGFN(capacity=pool_capacity, stock_data=train_data, target=target)
+    pool = AlphaPoolGFN(
+        capacity=pool_capacity,
+        stock_data=train_data,
+        target=target,
+        ic_mut_threshold=0.3,
+        ssl_k=3,
+        ssl_tau=0.1,
+        cache_manager=None,  # 将在下面初始化
+        entry_strategy="ic_ranking",
+        diversity_weight=0.3,
+        min_ic_threshold=0.05,
+        max_similarity_threshold=0.95,
+        adaptive_threshold_decay=0.99,
+        enable_cache=bool(job_ctx.get('cache_root')),
+        cache_key_builder=None
+    )
     
     # 初始化缓存管理器
     cache_manager = None
     if job_ctx.get('cache_root'):
-        cache_config = {
-            'cache_dir': job_ctx['cache_root'],
-            'dataset_id': job_ctx.get('dataset_meta', {}).get('dataset_id', job_ctx['domain']),
-            'family_id': job_ctx.get('family_spec', {}).get('family_id', 'default'),
-            'operator_set': [op.__name__ for op in selected_operators],
-            'constants': selected_constants,
-            'max_expr_length': job_ctx.get('job_spec', {}).get('max_expr_length', 20)
-        }
-        cache_manager = CacheManager(**cache_config)
+        # 构建配置哈希
+        config_hash = CacheManager.compute_config_hash(
+            operator_names=[op.__name__ for op in selected_operators],
+            delta_times=selected_delta_times,
+            constants=selected_constants,
+            max_expr_length=job_ctx.get('job_spec', {}).get('max_expr_length', 20)
+        )
+        
+        cache_manager = CacheManager(
+            base_cache_dir=job_ctx['cache_root'],
+            domain=job_ctx['domain'],
+            date_range=(job_ctx.get('train_start', '20200101'), job_ctx.get('train_end', '20201231')),
+            config_hash=config_hash
+        )
         pool.cache_manager = cache_manager
-        logger.info(f"Initialized cache manager: {cache_config}")
+        logger.info(f"Initialized cache manager with config hash: {config_hash}")
     
     # 创建特征枚举
     if job_ctx.get('family_spec') and job_ctx['family_spec'].get('enabled_layers'):

@@ -554,7 +554,7 @@ def main():
     else:
         dataset_meta = DatasetMeta({
             "dataset_id": job_spec.dataset_id,
-            "domain": job_spec.dataset_id.split('.')[2] if '.' in job_spec.dataset_id else 'A',
+            "domain": "A",  # 默认域，后续可以从job_spec或配置中获取
             "freq_group": "eod",
             "layers_enabled": family_spec.get('enabled_layers', ['raw', 'filled'])
         })
@@ -563,7 +563,7 @@ def main():
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     registry_manager = FeatureRegistryManagerV2()
     layers = family_spec.get('enabled_layers', ['raw', 'filled'])
-    domain = job_spec.dataset_id.split('.')[2] if '.' in job_spec.dataset_id else 'A'
+    domain = dataset_meta.domain  # 使用dataset_meta的domain而不是解析dataset_id
     
     train_loader = ParquetFeatureLoaderV2(
         domain=domain,

@@ -1,0 +1,42 @@
+# 特征预处理配置 - 支持参数化配置
+domains:
+  A: "feature_A_price_volume.parquet"
+  B: "feature_B_moneyflow.parquet"
+  C: "feature_C_chip.parquet"
+  E: "feature_E_intraday_summary.parquet"
+
+input_dir: "data/factor_ready"
+output_dir: "data/factor_ready_filled"
+stats_dir: "data/feature_digged"
+
+column_mapping:
+  date: "trade_date"
+  code: "ts_code"
+
+filling_config:
+  ffill_limit: 30          # 前向填充限制
+  bfill_limit: 15          # 后向填充限制
+  cross_sectional_fill: true  # 是否启用横截面填充
+  global_fallback: 0.0     # 全局回退值
+
+compression: "snappy"      # 输出文件压缩格式
+save_stats: true           # 是否保存统计信息
+
+# 高级配置
+advanced:
+  # 内存优化
+  chunk_size: 10000        # 分块处理大小
+  
+  # 数据类型优化
+  optimize_dtypes: true    # 是否优化数据类型
+  
+  # 质量控制
+  quality_checks:
+    max_nan_rate: 0.5      # 最大缺失率
+    min_observations: 100  # 最小观测数
+    
+  # 日志配置
+  logging:
+    level: "INFO"
+    save_log: true
+    log_file: "preprocessing.log"

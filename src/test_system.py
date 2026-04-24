@@ -31,8 +31,9 @@ def test_dataset_meta():
             "domain": "A",
             "data_dir": "data/test",
             "files": {
-                "daily": "daily.parquet",
-                "features": "features.parquet"
+                "raw": "feature_A_raw.parquet",
+                "filled": "feature_A_filled.parquet",
+                "atomic": "feature_A_atomic.parquet"
             },
             "columns": {
                 "date": "trade_date",
@@ -200,7 +201,7 @@ def test_alpha_pool_v2():
     logger.info("Testing AlphaPoolGFN V2...")
     
     try:
-        from alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
+        from src.alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
         
         # 这里需要实际的数据加载器，只测试初始化
         logger.info("AlphaPoolGFN V2 import successful")
@@ -215,7 +216,7 @@ def test_mining_pipeline():
     logger.info("Testing Mining Pipeline...")
     
     try:
-        from mining.mine_factors import build_mining_context
+        from src.mining.mine_factors import build_mining_context
         
         # 检查是否存在作业规格文件
         job_spec_path = "config/jobs/a_share_pv_ts_2020_2021.yaml"

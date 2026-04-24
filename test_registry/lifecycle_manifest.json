@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-04-23T22:02:09.913158",
+  "total_factors": 1,
+  "statistics": {
+    "created": 0,
+    "evaluated": 0,
+    "screened": 1,
+    "combined": 0,
+    "archived": 0,
+    "rejected": 0
+  },
+  "factors": {
+    "test_factor_001": {
+      "status": "screened",
+      "created_at": "2026-04-23T22:02:09.910703",
+      "evaluated_at": "2026-04-23T22:02:09.911706",
+      "screened_at": "2026-04-23T22:02:09.911706",
+      "combined_at": null,
+      "archived_at": null,
+      "rejected_at": null
+    }
+  }
+}

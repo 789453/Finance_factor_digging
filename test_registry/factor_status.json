@@ -1,0 +1,27 @@
+{
+  "test_factor_001": {
+    "factor_id": "test_factor_001",
+    "expression": "Mean(Ref(close, 5), 10)",
+    "status": "screened",
+    "created_at": "2026-04-23T22:02:09.910703",
+    "metadata": {
+      "description": "Test factor",
+      "author": "test_user"
+    },
+    "evaluations": {
+      "ic": 0.05,
+      "icir": 0.8,
+      "topk_ret": 0.002,
+      "stability": 2.5
+    },
+    "screening_results": {
+      "passed": true,
+      "icir_threshold": 0.15,
+      "topk_threshold": 0.001,
+      "stability_threshold": 0.5
+    },
+    "combination_info": {},
+    "evaluated_at": "2026-04-23T22:02:09.911706",
+    "screened_at": "2026-04-23T22:02:09.911706"
+  }
+}

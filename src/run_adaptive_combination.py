@@ -523,19 +523,57 @@ def run(args):
             ric_mean = cur_ric.mean(dim=0)
             ric_std = cur_ric.std(dim=0) + 1e-6
             
-            # ... (rest of logic)
-
+            # Calculate TopK returns for each factor
+            topk_ret_list = []
+            k_ratio = getattr(args, "topk_ratio", 0.1)
+            for factor_idx in range(cur_ic.size(1)):
+                factor_values = fct_tensor[begin:cur-shift, :, factor_idx]
+                factor_returns = []
+                for d in range(factor_values.size(0)):
+                    mask = ~(torch.isnan(factor_values[d]) | torch.isnan(ret_tgt_tensor[begin+d]))
+                    if mask.sum() < 2:
+                        factor_returns.append(0.0)
+                        continue
+                    
+                    valid_factor = factor_values[d, mask]
+                    valid_ret = ret_tgt_tensor[begin+d, mask]
+                    k = max(1, int(k_ratio * valid_factor.size(0)))
+                    _, indices = torch.topk(valid_factor, k)
+                    factor_returns.append(valid_ret[indices].mean().item())
+                
+                if factor_returns:
+                    topk_ret_list.append(torch.tensor(factor_returns).mean().item())
+                else:
+                    topk_ret_list.append(0.0)
+            
+            topk_ret_mean = torch.tensor(topk_ret_list, device=ic_mean.device)
+            
+            # Calculate stability scores (inverse of IC std)
+            stability_scores = 1.0 / (ic_std + 1e-8)
+            
             icir = ic_mean / ic_std
             ricir = ric_mean / ric_std
             
-            # Filter and select best factors
+            # Filter and select best factors using new main metrics (ICIR/TopK/Stability)
             metrics_df = pd.DataFrame({
-                'ric': ric_mean.cpu().numpy(),
-                'ricir': ricir.cpu().numpy()
+                'icir': icir.cpu().numpy(),
+                'topk_ret': topk_ret_mean.cpu().numpy(),
+                'stability': stability_scores.cpu().numpy()
             })
-            good_factors = metrics_df[(metrics_df['ric'].abs() > args.threshold_ric) & (metrics_df['ricir'].abs() > args.threshold_ricir)]
+            
+            # Use ICIR as primary filter, with TopK and Stability as secondary criteria
+            threshold_icir = getattr(args, 'threshold_icir', 0.15)
+            threshold_topk = getattr(args, 'threshold_topk', 0.001)
+            threshold_stability = getattr(args, 'threshold_stability', 0.5)
+            
+            good_factors = metrics_df[
+                (metrics_df['icir'].abs() > threshold_icir) & 
+                (metrics_df['topk_ret'].abs() > threshold_topk) & 
+                (metrics_df['stability'] > threshold_stability)
+            ]
             if len(good_factors) < 1:
-                good_factors = metrics_df.reindex(metrics_df.ricir.abs().sort_values(ascending=False).index).iloc[:1]
+                # Fallback: select top factors by ICIR
+                good_factors = metrics_df.reindex(metrics_df.icir.abs().sort_values(ascending=False).index).iloc[:1]
             
             good_idx = good_factors.iloc[:args.n_factors].index.to_list()
             
@@ -697,6 +735,18 @@ if __name__ == '__main__':
     parser.add_argument('--date_column', type=str, default='trade_date')
     parser.add_argument('--code_column', type=str, default='ts_code')
     parser.add_argument('--close_column', type=str, default='close')
+    
+    # New main metrics configuration (ICIR/TopK/Stability)
+    parser.add_argument('--threshold_icir', type=float, default=0.15,
+                        help="ICIR threshold for factor selection (main metric).")
+    parser.add_argument('--threshold_topk', type=float, default=0.001,
+                        help="TopK return threshold for factor selection (main metric).")
+    parser.add_argument('--threshold_stability', type=float, default=0.5,
+                        help="Stability threshold for factor selection (main metric).")
+    parser.add_argument('--topk_ratio', type=float, default=0.1,
+                        help="TopK ratio for return calculation (default 10%).")
+    parser.add_argument('--stability_window', type=int, default=20,
+                        help="Window size for stability calculation.")
                         
     # Adaptive Combo Runtime Config
     parser.add_argument("--adaptive_mode", type=str, default="local", choices=["local", "cloud"])

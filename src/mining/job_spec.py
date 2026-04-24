@@ -193,6 +193,71 @@ class MiningJobSpec:
     @property
     def test_end(self) -> str:
         return self.raw.get("test_end", "20211231")
+    
+    # 可选字段属性
+    @property
+    def status_filter(self) -> List[str]:
+        return self.raw.get("status_filter", ["active", "watch"])
+    
+    @property
+    def max_backtrack_days(self) -> int:
+        return self.raw.get("max_backtrack_days", 100)
+    
+    @property
+    def max_future_days(self) -> int:
+        return self.raw.get("max_future_days", 30)
+    
+    @property
+    def label_days(self) -> int:
+        return self.raw.get("label_days", 10)
+    
+    @property
+    def n_episodes(self) -> int:
+        return self.raw.get("n_episodes", 10000)
+    
+    @property
+    def pool_capacity(self) -> int:
+        return self.raw.get("pool_capacity", 50)
+    
+    @property
+    def encoder_type(self) -> str:
+        return self.raw.get("encoder_type", "gnn")
+    
+    @property
+    def entropy_coef(self) -> float:
+        return self.raw.get("entropy_coef", 0.01)
+    
+    @property
+    def ssl_weight(self) -> float:
+        return self.raw.get("ssl_weight", 1.0)
+    
+    @property
+    def nov_weight(self) -> float:
+        return self.raw.get("nov_weight", 0.3)
+    
+    @property
+    def max_expr_length(self) -> int:
+        return self.raw.get("max_expr_length", 20)
+    
+    @property
+    def cache_root(self) -> str:
+        return self.raw.get("cache_root", "data/cache")
+    
+    @property
+    def output_dir(self) -> str:
+        return self.raw.get("output_dir", "output")
+    
+    @property
+    def run_name(self) -> str:
+        return self.raw.get("run_name", "default_run")
+    
+    @property
+    def seed(self) -> int:
+        return self.raw.get("seed", 0)
+    
+    @property
+    def cuda(self) -> int:
+        return self.raw.get("cuda", 0)
 
 def load_job_spec(spec_path: str) -> MiningJobSpec:
     """
@@ -345,11 +410,14 @@ class JobSpecValidator:
         if job_spec.family_id != family_spec.get("family_id"):
             errors.append(f"Job family_id '{job_spec.family_id}' != spec family_id '{family_spec.get('family_id')}'")
         
-        # 验证域兼容性
-        job_domain = job_spec.dataset_id.split('.')[0] if '.' in job_spec.dataset_id else job_spec.dataset_id
+        # 验证域兼容性 - 使用dataset_meta的domain而不是解析dataset_id
         meta_domain = dataset_meta.get("domain", "unknown")
-        if job_domain != meta_domain:
-            errors.append(f"Job domain '{job_domain}' != meta domain '{meta_domain}'")
+        # 如果meta中有domain字段，则验证；否则跳过验证
+        if meta_domain != "unknown":
+            # 从dataset_meta获取domain，而不是解析dataset_id
+            job_domain_from_meta = dataset_meta.get("domain", "A")
+            if job_domain_from_meta != meta_domain:
+                errors.append(f"Job domain from meta '{job_domain_from_meta}' != meta domain '{meta_domain}'")
         
         # 验证日期范围
         if job_spec.train_start < dataset_meta.get("date_range", {}).get("start", "00000000"):

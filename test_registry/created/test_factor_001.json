@@ -1,0 +1,7 @@
+{
+  "expression": "Mean(Ref(close, 5), 10)",
+  "metadata": {
+    "description": "Test factor",
+    "author": "test_user"
+  }
+}

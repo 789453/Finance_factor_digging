@@ -1,0 +1,18 @@
+column_mapping:
+  code: ts_code
+  date: trade_date
+compression: snappy
+domains:
+  A: feature_A_price_volume.parquet
+  B: feature_B_moneyflow.parquet
+  C: feature_C_chip.parquet
+  E: feature_E_intraday_summary.parquet
+filling_config:
+  bfill_limit: 15
+  cross_sectional_fill: true
+  ffill_limit: 30
+  global_fallback: 0.0
+input_dir: data/factor_ready
+output_dir: data/factor_ready_filled
+save_stats: true
+stats_dir: data/feature_digged

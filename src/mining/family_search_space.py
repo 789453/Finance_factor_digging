@@ -208,7 +208,12 @@ def build_family_search_space(family_spec: Dict[str, Any]) -> Tuple[List, List, 
             logger.warning("Could not import expression operators, using empty operator map")
             operator_map = {}
     
+    # 获取操作符白名单和禁用列表
+    operator_whitelist = family_spec.get('operator_whitelist', list(operator_map.keys()))
+    forbid_operators = family_spec.get('forbid_operators', [])
+    
     # 过滤操作符
+    all_operators = []
     for op_name in operator_whitelist:
         if op_name in operator_map:
             if op_name not in forbid_operators:

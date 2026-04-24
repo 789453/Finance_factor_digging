@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "icir_threshold": 0.15,
+  "topk_threshold": 0.001,
+  "stability_threshold": 0.5
+}
