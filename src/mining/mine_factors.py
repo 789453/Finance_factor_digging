@@ -27,9 +27,9 @@ from alphagen_generic.feature_registry_manager_v2 import FeatureRegistryManagerV
 from alphagen.data.expression import Expression, Feature, Ref, Abs, Log, Sign
 from alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
 from alpha_gfn.env.core import GFNEnvCore
-from alpha_gfn.expression_quality import ExpressionQualityValidator
-from alpha_gfn.semantic_embedding import OllamaExpressionEmbedder
-from evaluation.factor_metrics import FactorMetricsEvaluator
+from factor_core.expression_quality import ExpressionQualityValidator
+from factor_core.semantic_embedding import OllamaExpressionEmbedder
+from factor_eval.factor_metrics import FactorMetricsEvaluator
 from alpha_gfn.modules import SequenceEncoder, SimpleNeuralNet
 from alpha_gfn.gflownet import EntropyTBGFlowNet
 from alpha_gfn.config import HIDDEN_DIM

@@ -23,18 +23,18 @@ try:
     from alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2
     from alphagen_generic.feature_registry_manager_v2 import FeatureRegistryManagerV2
     from mining.job_spec import MiningJobSpec, load_job_spec
-    from alpha_gfn.expression_quality import ExpressionQualityValidator
-    from evaluation.factor_metrics import FactorMetricsEvaluator
-    from evaluation.reporting import FactorReportWriter
+    from factor_core.expression_quality import ExpressionQualityValidator
+    from factor_eval.factor_metrics import FactorMetricsEvaluator
+    from factor_eval.reporting import FactorReportWriter
 except ImportError:
     from src.alphagen.data.expression import Expression, parse_expr
     from src.alphagen_generic.dataset_meta import DatasetMeta
     from src.alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2
     from src.alphagen_generic.feature_registry_manager_v2 import FeatureRegistryManagerV2
     from src.mining.job_spec import MiningJobSpec, load_job_spec
-    from src.alpha_gfn.expression_quality import ExpressionQualityValidator
-    from src.evaluation.factor_metrics import FactorMetricsEvaluator
-    from src.evaluation.reporting import FactorReportWriter
+    from src.factor_core.expression_quality import ExpressionQualityValidator
+    from src.factor_eval.factor_metrics import FactorMetricsEvaluator
+    from src.factor_eval.reporting import FactorReportWriter
 
 logger = logging.getLogger(__name__)
 

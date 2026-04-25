@@ -16,17 +16,17 @@ from alphagen.models.alpha_pool import AlphaPool
 from alphagen.data.expression import Expression
 from alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2 as ParquetFeatureLoader
 try:
-    from alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
-    from alpha_gfn.expression_quality import ExpressionQualityValidator
-    from alpha_gfn.expression_canonical import ExpressionCanonicalizer
-    from alpha_gfn.semantic_embedding import OllamaExpressionEmbedder
-    from evaluation.factor_metrics import FactorMetricsEvaluator
+    from factor_core.cache import CacheManager, CacheKeyBuilder
+    from factor_core.expression_quality import ExpressionQualityValidator
+    from factor_core.expression_canonical import ExpressionCanonicalizer
+    from factor_core.semantic_embedding import OllamaExpressionEmbedder
+    from factor_eval.factor_metrics import FactorMetricsEvaluator
 except ImportError:
     from .cache_manager import CacheManager, CacheKeyBuilder
     from .expression_quality import ExpressionQualityValidator
     from .expression_canonical import ExpressionCanonicalizer
     from .semantic_embedding import OllamaExpressionEmbedder
-    from ..evaluation.factor_metrics import FactorMetricsEvaluator
+    from ..factor_eval.factor_metrics import FactorMetricsEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +382,7 @@ class AlphaPoolGFN(AlphaPool):
         max_pool_corr = 0.0
         for i in range(self.size):
             if self.values[i] is not None:
-                # 使用 evaluation.panel_ops 中的相关性计算可能更好，但为了速度先用已有的
+                # 使用 factor_eval.panel_ops 中的相关性计算可能更好，但为了速度先用已有的
                 from alphagen.utils.correlation import batch_pearsonr
                 corr = abs(batch_pearsonr(value, self.values[i]).mean().item())
                 ic_mut.append(corr)

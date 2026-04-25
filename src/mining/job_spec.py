@@ -9,9 +9,57 @@ import os
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import logging
+import warnings
 from datetime import datetime
+from factor_io.specs import (
+    MiningExperimentSpec, DatasetSpec, UniverseSpec, TargetSpec,
+    ExperimentSplit, SearchSpaceSpec, EngineSpec, EvaluationSpec, OutputSpec
+)
 
 logger = logging.getLogger(__name__)
+
+def load_experiment_spec(path: str) -> MiningExperimentSpec:
+    """Load mining experiment specification from YAML or JSON"""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Experiment spec file not found: {path}")
+    
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ['.yaml', '.yml']:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+    elif ext == '.json':
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    else:
+        raise ValueError(f"Unsupported format: {ext}")
+
+    # Build spec objects from dict
+    # This is a simplified mapper, real implementation should handle nested dicts properly
+    job_data = data.get("job", {})
+    dataset_data = data.get("data", {})
+    universe_data = data.get("universe", {})
+    target_data = data.get("target", {})
+    split_data = data.get("split", data.get("data", {}).get("splits", {}))
+    search_data = data.get("search_space", {})
+    engine_data = data.get("engine", {})
+    eval_data = data.get("evaluation", {})
+    output_data = data.get("output", {})
+
+    spec = MiningExperimentSpec(
+        job_id=job_data.get("job_id", data.get("job_id", "unknown")),
+        name=job_data.get("name", data.get("name", "unknown")),
+        seed=job_data.get("seed", data.get("seed", 42)),
+        output_dir=job_data.get("output_dir", data.get("output_dir", "runs")),
+        dataset=DatasetSpec(**dataset_data) if dataset_data else None,
+        universe=UniverseSpec(**universe_data) if universe_data else None,
+        target=TargetSpec(**target_data) if target_data else None,
+        split=ExperimentSplit(**split_data) if split_data else None,
+        search_space=SearchSpaceSpec(**search_data) if search_data else None,
+        engine=EngineSpec(**engine_data) if engine_data else None,
+        evaluation=EvaluationSpec(**eval_data) if eval_data else None,
+        output=OutputSpec(**output_data) if output_data else None
+    )
+    return spec
 
 class MiningJobSpec:
     """挖掘作业规格"""
@@ -245,6 +293,7 @@ class MiningJobSpec:
 
 def load_job_spec(spec_path: str) -> MiningJobSpec:
     """加载作业规格"""
+    warnings.warn("load_job_spec is legacy; use load_experiment_spec", DeprecationWarning)
     if not os.path.exists(spec_path):
         raise FileNotFoundError(f"Job spec file not found: {spec_path}")
     

@@ -1,0 +1,52 @@
+# 因子挖掘筛选与约束配置文件
+# 适用于 AlphaPROBE 模块化架构
+
+job:
+  job_id: "exp_20260425_v1"
+  name: "Baseline_Mining_Lowered"
+  output_dir: "runs/baseline"
+
+# 算子组合约束 (对应 ConstraintSpec)
+constraints:
+  allow_nested_ts: true
+  max_ts_window: 60
+  required_operators: ["Add", "Sub", "Mul", "Div"]
+  forbidden_combinations:
+    - ["Log", "Log"]
+    - ["Abs", "Abs"]
+
+# 因子筛选条件 (对应 ScreeningSpec)
+# 注意：这里放低了条件以进行初步真实数据测试
+screening:
+  min_ic: 0.015          # 从 0.02 降低
+  min_rank_ic: 0.015     # 从 0.02 降低
+  min_icir: 0.3          # 从 0.5 降低
+  min_stability: 0.05    # 从 0.1 降低
+  max_nan_ratio: 0.4     # 允许更多空值
+  min_coverage: 0.6      # 允许较低覆盖度
+  max_complexity: 12     # 允许稍复杂的公式
+  max_depth: 6
+
+  # 区域/域名特定覆盖 (Domain Overrides)
+  domain_overrides:
+    A: # A 域可能质量更高，要求更严
+      min_ic: 0.02
+      min_icir: 0.5
+    E: # E 域（如期货或外盘）噪声大，条件进一步放低
+      min_ic: 0.01
+      min_icir: 0.2
+      min_coverage: 0.5
+
+# 引擎配置
+engine:
+  type: "gfn"
+  params:
+    learning_rate: 0.0001
+    entropy_coef: 0.02
+    batch_size: 32
+
+# 评估配置
+evaluation:
+  metrics: ["ic", "rank_ic", "ic_ir", "stability", "topk_ret"]
+  topk: [20, 50, 100]
+  rolling_windows: [20, 60, 250]
