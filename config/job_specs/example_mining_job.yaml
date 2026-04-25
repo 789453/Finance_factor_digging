@@ -57,8 +57,8 @@ family:
 
 # 训练配置
 training:
-  n_episodes: 10000
-  log_freq: 1000
+  n_episodes: 1000
+  log_freq: 100
   entropy_coef: 0.01
   entropy_temperature: 1.0
   mask_dropout_prob: 1.0

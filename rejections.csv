@@ -1,0 +1,5 @@
+timestamp,expression,ic,max_mut_corr,reason
+2026-04-25 14:47:42,"Add($close,1.0)",0.000000,0.000000,"quality:low_complexity:3<4"
+2026-04-25 14:47:42,"TsMean(Add($open,$close),10)",0.000000,1.000000,"duplicate:canonical"
+2026-04-25 14:48:23,"Add($close,1.0)",0.000000,0.000000,"quality:low_complexity:3<4"
+2026-04-25 14:48:24,"TsMean(Add($open,$close),10)",0.000000,1.000000,"duplicate:canonical"

@@ -7,6 +7,7 @@ import hashlib
 import logging
 import os
 from typing import List, Optional, Tuple, Dict, Any
+from dataclasses import asdict
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -16,8 +17,16 @@ from alphagen.data.expression import Expression
 from alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2 as ParquetFeatureLoader
 try:
     from alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
+    from alpha_gfn.expression_quality import ExpressionQualityValidator
+    from alpha_gfn.expression_canonical import ExpressionCanonicalizer
+    from alpha_gfn.semantic_embedding import OllamaExpressionEmbedder
+    from evaluation.factor_metrics import FactorMetricsEvaluator
 except ImportError:
     from .cache_manager import CacheManager, CacheKeyBuilder
+    from .expression_quality import ExpressionQualityValidator
+    from .expression_canonical import ExpressionCanonicalizer
+    from .semantic_embedding import OllamaExpressionEmbedder
+    from ..evaluation.factor_metrics import FactorMetricsEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -35,33 +44,30 @@ class AlphaPoolGFN(AlphaPool):
         ssl_k: int = 3,
         ssl_tau: float = 0.1,
         cache_manager: CacheManager = None,
-        entry_strategy: str = "ic_ranking",  # ic_ranking, diversity_aware, adaptive
+        entry_strategy: str = "composite",  # ic_ranking, diversity_aware, adaptive, composite
         diversity_weight: float = 0.3,
         min_ic_threshold: float = 0.05,
         max_similarity_threshold: float = 0.95,
         adaptive_threshold_decay: float = 0.99,
         enable_cache: bool = True,
-        cache_key_builder: CacheKeyBuilder = None
+        cache_key_builder: CacheKeyBuilder = None,
+        # New components
+        valid_data: Optional[ParquetFeatureLoader] = None,
+        test_data: Optional[ParquetFeatureLoader] = None,
+        metrics_evaluator: Optional[FactorMetricsEvaluator] = None,
+        quality_validator: Optional[ExpressionQualityValidator] = None,
+        canonicalizer: Optional[ExpressionCanonicalizer] = None,
+        semantic_embedder: Optional[OllamaExpressionEmbedder] = None,
+        # New thresholds
+        min_train_ic: float = 0.015,
+        min_valid_ic: float = 0.005,
+        min_rank_ic: float = 0.005,
+        min_ic_ir: float = 0.05,
+        min_coverage: float = 0.65,
+        max_nan_ratio: float = 0.35,
+        max_pool_corr: float = 0.70,
+        semantic_sim_threshold: float = 0.92,
     ):
-        """
-        初始化AlphaPoolGFN
-        
-        Args:
-            capacity: 池容量
-            stock_data: 股票数据加载器
-            target: 目标表达式
-            ic_mut_threshold: IC互相关阈值
-            ssl_k: SSL最近邻数量
-            ssl_tau: SSL温度参数
-            cache_manager: 缓存管理器
-            entry_strategy: 入池策略
-            diversity_weight: 多样性权重
-            min_ic_threshold: 最小IC阈值
-            max_similarity_threshold: 最大相似度阈值
-            adaptive_threshold_decay: 自适应阈值衰减
-            enable_cache: 是否启用缓存
-            cache_key_builder: 缓存键构建器
-        """
         super().__init__(capacity, stock_data, target)
         self.ic_mut_threshold = ic_mut_threshold
         self.ssl_k = ssl_k
@@ -74,6 +80,33 @@ class AlphaPoolGFN(AlphaPool):
         self.adaptive_threshold_decay = adaptive_threshold_decay
         self.enable_cache = enable_cache
         self.cache_key_builder = cache_key_builder or CacheKeyBuilder()
+        
+        # New components
+        self.valid_data = valid_data
+        self.test_data = test_data
+        self.metrics_evaluator = metrics_evaluator or FactorMetricsEvaluator()
+        self.quality_validator = quality_validator
+        self.canonicalizer = canonicalizer or ExpressionCanonicalizer()
+        self.semantic_embedder = semantic_embedder
+        
+        # New thresholds
+        self.min_train_ic = min_train_ic
+        self.min_valid_ic = min_valid_ic
+        self.min_rank_ic = min_rank_ic
+        self.min_ic_ir = min_ic_ir
+        self.min_coverage = min_coverage
+        self.max_nan_ratio = max_nan_ratio
+        self.max_pool_corr = max_pool_corr
+        self.semantic_sim_threshold = semantic_sim_threshold
+        
+        # 扩展存储
+        self.composite_scores = np.zeros(capacity + 1)
+        self.metric_records = [None for _ in range(capacity + 1)]
+        self.quality_records = [None for _ in range(capacity + 1)]
+        self.canonical_exprs = [None for _ in range(capacity + 1)]
+        self.canonical_hashes_by_slot = [None for _ in range(capacity + 1)]
+        self.canonical_hashes = set()
+        self.semantic_embeddings = [None for _ in range(capacity + 1)]
         
         # 获取 log_dir 并初始化拒绝日志
         self.log_dir = "."
@@ -201,11 +234,26 @@ class AlphaPoolGFN(AlphaPool):
         """记录被拒绝的因子"""
         import datetime
         import os
-        if not hasattr(self, "rejection_file") or not os.path.exists(os.path.dirname(self.rejection_file)):
+        if not hasattr(self, "rejection_file"):
             return
+            
+        # 确保目录存在
+        log_dir = os.path.dirname(self.rejection_file)
+        if log_dir and not os.path.exists(log_dir):
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+            except Exception:
+                return
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # 清理表达式中的换行符
         expr_str = str(expr).replace("\n", " ").replace("\r", "")
+        
+        # 如果文件不存在，写入表头
+        if not os.path.exists(self.rejection_file):
+            with open(self.rejection_file, "w", encoding="utf-8") as f:
+                f.write("timestamp,expression,ic,max_mut_corr,reason\n")
+                
         with open(self.rejection_file, "a", encoding="utf-8") as f:
             f.write(f"{timestamp},\"{expr_str}\",{ic:.6f},{max_mut:.6f},\"{reason}\"\n")
 
@@ -251,250 +299,220 @@ class AlphaPoolGFN(AlphaPool):
 
     def try_new_expr(self, expr: Expression, embedding: Optional[Tensor] = None) -> Tuple[float, float]:
         """
-        尝试添加新表达式到池中
-        
-        Args:
-            expr: 表达式
-            embedding: 嵌入向量
-            
-        Returns:
-            (ic_ret, nov_score) 元组
+        尝试添加新表达式到池中 (重构后的逻辑)
         """
-        try:
-            # 检查缓存
-            if self.enable_cache and self.cache_manager:
-                cache_key = self.cache_key_builder.build_key(expr)
-                cached_result = self.cache_manager.get(cache_key)
-                if cached_result is not None:
-                    self.stats['cache_hits'] += 1
-                    ic_ret, ic_mut, value = cached_result
-                    logger.debug(f"Cache hit for expression: {expr}")
-                else:
-                    self.stats['cache_misses'] += 1
-                    value = self._normalize_by_day(expr.evaluate(self.data))
-                    ic_ret, ic_mut = self._calc_ics(value, ic_mut_threshold=0.99)
-                    self.cache_manager.put(cache_key, (ic_ret, ic_mut, value))
-            else:
-                value = self._normalize_by_day(expr.evaluate(self.data))
-                ic_ret, ic_mut = self._calc_ics(value, ic_mut_threshold=0.99)
-            
-        except Exception as e:
-            logger.warning(f"Expression evaluation failed: {expr}, error: {e}")
-            return 0.0, 1.0
-        
         self.stats['total_evaluations'] += 1
         
-        if ic_ret is None or ic_mut is None:
-            return 0.0, 1.0
-        
-        ic_ret = np.abs(ic_ret)
-        ic_mut = np.abs(ic_mut)
-        
-        # 根据入池策略决定是否添加
-        should_add = False
-        reason = ""
-        
-        if self.entry_strategy == "ic_ranking":
-            should_add, reason = self._should_add_ic_ranking(expr, ic_ret, ic_mut, value)
-        elif self.entry_strategy == "diversity_aware":
-            should_add, reason = self._should_add_diversity_aware(expr, ic_ret, ic_mut, value, embedding)
-        elif self.entry_strategy == "adaptive":
-            should_add, reason = self._should_add_adaptive(expr, ic_ret, ic_mut, value, embedding)
-        else:
-            should_add, reason = self._should_add_default(expr, ic_ret, ic_mut, value)
-        
-        if should_add:
-            self._add_factor(expr, value, ic_ret, ic_mut, embedding)
-            self.stats['pool_additions'] += 1
-            logger.info(f"[Pool Add] {expr} - {reason}")
-        else:
-            self.stats['pool_rejections'] += 1
-            max_mut = np.max(ic_mut) if ic_mut.size > 0 else 0.0
-            self._log_rejection(expr, ic_ret, max_mut, reason)
-            logger.debug(f"[Pool Reject] {expr} - {reason}")
-        
-        # 计算新颖性分数
-        nov_score = (1 - np.max(ic_mut)) if ic_mut.size > 0 else 1.0
-        
-        return ic_ret, nov_score
-    
-    def _should_add_default(self, expr: Expression, ic_ret: float, ic_mut: np.ndarray, value: Tensor) -> Tuple[bool, str]:
-        """默认入池策略"""
-        if self.size < self.capacity:
-            if ic_mut.size == 0 or np.max(ic_mut) <= self.ic_mut_threshold:
-                return True, "Pool not full, IC constraint satisfied"
-        else:
-            min_ic_idx = np.argmin(self.single_ics[:self.size])
-            min_ic = self.single_ics[min_ic_idx]
-            if ic_ret > min_ic and (ic_mut.size == 0 or np.max(ic_mut) <= self.ic_mut_threshold):
-                return True, "Better than worst factor"
-        
-        return False, "IC constraint not satisfied or not better than existing"
-    
-    def _should_add_ic_ranking(self, expr: Expression, ic_ret: float, ic_mut: np.ndarray, value: Tensor) -> Tuple[bool, str]:
-        """基于IC排名的入池策略"""
-        if ic_ret < self.current_ic_threshold:
-            return False, f"IC {ic_ret:.4f} below threshold {self.current_ic_threshold:.4f}"
-        
-        if ic_mut.size > 0 and np.max(ic_mut) > self.ic_mut_threshold:
-            return False, f"IC mutual correlation {np.max(ic_mut):.4f} exceeds threshold {self.ic_mut_threshold}"
-        
-        if self.size < self.capacity:
-            return True, "Pool not full, IC threshold satisfied"
-        else:
-            min_ic_idx = np.argmin(self.single_ics[:self.size])
-            min_ic = self.single_ics[min_ic_idx]
-            if ic_ret > min_ic:
-                return True, f"IC {ic_ret:.4f} better than worst {min_ic:.4f}"
-            else:
-                return False, f"IC {ic_ret:.4f} not better than worst {min_ic:.4f}"
-    
-    def _should_add_diversity_aware(self, expr: Expression, ic_ret: float, ic_mut: np.ndarray, 
-                                  value: Tensor, embedding: Optional[Tensor] = None) -> Tuple[bool, str]:
-        """多样性感知的入池策略"""
-        if ic_ret < self.current_ic_threshold:
-            return False, f"IC {ic_ret:.4f} below threshold {self.current_ic_threshold:.4f}"
-        
-        if ic_mut.size > 0 and np.max(ic_mut) > self.ic_mut_threshold:
-            return False, f"IC mutual correlation {np.max(ic_mut):.4f} exceeds threshold {self.ic_mut_threshold}"
-        
-        # 计算多样性分数
-        diversity_score = self._compute_diversity_score(value, embedding)
-        
-        if self.size < self.capacity:
-            if diversity_score >= self.current_diversity_threshold:
-                return True, f"Pool not full, diversity score {diversity_score:.4f} sufficient"
-            else:
-                return False, f"Diversity score {diversity_score:.4f} below threshold {self.current_diversity_threshold:.4f}"
-        else:
-            # 池已满，需要综合考虑IC和多样性
-            combined_scores = []
-            for i in range(self.size):
-                factor_ic = self.single_ics[i]
-                factor_diversity = self._compute_diversity_score(self.values[i], self.embeddings[i])
-                combined_score = factor_ic + self.diversity_weight * factor_diversity
-                combined_scores.append(combined_score)
+        # 1. 表达式结构质量验证 (Expression Quality)
+        q_report = None
+        if self.quality_validator:
+            q_report = self.quality_validator.validate(expr)
+            if not q_report.accept:
+                # 即使质量不合格，如果是为了调试，我们可以尝试计算一下 IC
+                # 但为了工程严谨，目前仅记录原因并返回极小奖励以提供梯度反馈
+                self._log_rejection(expr, 0.0, 0.0, f"quality:{q_report.reason}")
+                return 1e-10, 0.0
+                
+        # 2. 表达式归一化去重 (Canonical Hash)
+        canonical = self.canonicalizer.canonicalize(expr)
+        expr_hash = self.canonicalizer.hash(expr)
+        if expr_hash in self.canonical_hashes:
+            self._log_rejection(expr, 0.0, 1.0, "duplicate:canonical")
+            return 1e-10, 0.0
             
-            new_combined_score = ic_ret + self.diversity_weight * diversity_score
-            min_combined_idx = np.argmin(combined_scores)
-            min_combined_score = combined_scores[min_combined_idx]
+        # 3. 评估因子值
+        try:
+            # 尝试从缓存获取
+            value = None
+            if self.enable_cache and self.cache_manager:
+                cache_key = self.cache_key_builder.build_key(expr)
+                cached = self.cache_manager.get(cache_key)
+                if cached:
+                    self.stats['cache_hits'] += 1
+                    _, _, value = cached
+                else:
+                    self.stats['cache_misses'] += 1
             
-            if new_combined_score > min_combined_score:
-                return True, f"Combined score {new_combined_score:.4f} better than worst {min_combined_score:.4f}"
-            else:
-                return False, f"Combined score {new_combined_score:.4f} not better than worst {min_combined_score:.4f}"
-    
-    def _should_add_adaptive(self, expr: Expression, ic_ret: float, ic_mut: np.ndarray, 
-                           value: Tensor, embedding: Optional[Tensor] = None) -> Tuple[bool, str]:
-        """自适应入池策略"""
-        # 动态调整阈值
-        self._update_adaptive_thresholds()
+            if value is None:
+                value = self._normalize_by_day(expr.evaluate(self.data))
+                if self.enable_cache and self.cache_manager:
+                    self.cache_manager.put(cache_key, (None, None, value))
+                    
+        except Exception as e:
+            self._log_rejection(expr, 0.0, 0.0, f"eval_error:{type(e).__name__}")
+            return 1e-10, 0.0
+            
+        # 4. 因子值健康检查 (Value Sanity)
+        sanity = self.metrics_evaluator.value_sanity(value)
+        if not sanity["ok"]:
+            self._log_rejection(expr, 0.0, 0.0, f"value_sanity:{sanity['reason']}")
+            return 1e-10, 0.0
+            
+        # 5. 快速计算 Train Metrics
+        train_metrics = self.metrics_evaluator.evaluate_tensor(value, self.target)
+        direction = 1.0 if train_metrics["ic_mean"] >= 0 else -1.0
+        train_ic_adj = train_metrics["ic_adj"]
         
-        # 使用多样性感知策略作为基础
-        return self._should_add_diversity_aware(expr, ic_ret, ic_mut, value, embedding)
-    
-    def _compute_diversity_score(self, value: Tensor, embedding: Optional[Tensor] = None) -> float:
-        """计算多样性分数"""
-        if self.size == 0:
-            return 1.0
-        
-        diversity_scores = []
-        
+        if train_ic_adj < self.min_train_ic:
+            self._log_rejection(expr, train_ic_adj, 0.0, "low_train_ic")
+            # 给模型一个基于 IC 的正反馈，但不入池
+            return max(train_ic_adj, 1e-10), 0.0
+            
+        # 6. 计算 Valid Metrics (只有 Train 合格才算 Valid，省时间)
+        valid_metrics = None
+        if self.valid_data:
+            try:
+                valid_value = self._normalize_by_day(expr.evaluate(self.valid_data))
+                valid_metrics = self.metrics_evaluator.evaluate_tensor(
+                    valid_value, 
+                    self.valid_data.target if hasattr(self.valid_data, 'target') else self.target, # Fallback
+                    direction=direction
+                )
+                if valid_metrics["ic_adj"] < self.min_valid_ic:
+                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_ic")
+                    return max(train_ic_adj, 1e-10), 0.0
+                if valid_metrics["rank_ic_adj"] < self.min_rank_ic:
+                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_rank_ic")
+                    return max(train_ic_adj, 1e-10), 0.0
+            except Exception as e:
+                logger.warning(f"Valid evaluation failed for {expr}: {e}")
+                
+        # 7. 池互相关拒绝 (Pool Correlation)
+        ic_mut = []
+        max_pool_corr = 0.0
         for i in range(self.size):
             if self.values[i] is not None:
-                # 计算值相似度
-                value_sim = self._compute_value_similarity(value, self.values[i])
-                diversity_scores.append(1.0 - value_sim)
+                # 使用 evaluation.panel_ops 中的相关性计算可能更好，但为了速度先用已有的
+                from alphagen.utils.correlation import batch_pearsonr
+                corr = abs(batch_pearsonr(value, self.values[i]).mean().item())
+                ic_mut.append(corr)
         
-        if not diversity_scores:
-            return 1.0
-        
-        return np.mean(diversity_scores)
-    
-    def _compute_value_similarity(self, value1: Tensor, value2: Tensor) -> float:
-        """计算值相似度"""
-        try:
-            # 计算皮尔逊相关系数
-            v1_flat = value1.flatten()
-            v2_flat = value2.flatten()
-            
-            # 移除NaN值
-            valid_mask = ~(torch.isnan(v1_flat) | torch.isnan(v2_flat))
-            if valid_mask.sum() < 2:
-                return 0.0
-            
-            v1_valid = v1_flat[valid_mask]
-            v2_valid = v2_flat[valid_mask]
-            
-            # 计算相关系数
-            correlation = torch.corrcoef(torch.stack([v1_valid, v2_valid]))[0, 1].item()
-            return abs(correlation)
-        except:
-            return 0.0
-    
-    def _update_adaptive_thresholds(self):
-        """更新自适应阈值"""
-        if self.size == 0:
-            return
-        
-        # 基于池中因子的统计信息调整阈值
-        current_ics = self.single_ics[:self.size]
-        
-        # 如果池中因子质量较高，提高IC阈值
-        if len(current_ics) > 5:
-            mean_ic = np.mean(current_ics)
-            std_ic = np.std(current_ics)
-            
-            if mean_ic > self.current_ic_threshold:
-                self.current_ic_threshold = min(
-                    self.current_ic_threshold * self.adaptive_threshold_decay,
-                    mean_ic - 0.5 * std_ic
-                )
-                self.stats['adaptive_threshold_updates'] += 1
-        
-        # 如果池中因子过于相似，提高多样性要求
-        if self.size > 10:
-            diversity_scores = []
+        if ic_mut:
+            max_pool_corr = max(ic_mut)
+            if max_pool_corr > self.max_pool_corr:
+                self._log_rejection(expr, train_ic_adj, max_pool_corr, "high_pool_corr")
+                return max(train_ic_adj, 1e-10), 1.0 - max_pool_corr
+
+        # 8. 语义去重 (Semantic Duplicate)
+        semantic_sim = 0.0
+        semantic_vec = None
+        if self.semantic_embedder:
+            semantic_vec = self.semantic_embedder.embed_one(canonical)
+            # 计算与池中因子的语义相似度
             for i in range(self.size):
-                for j in range(i + 1, self.size):
-                    if self.values[i] is not None and self.values[j] is not None:
-                        sim = self._compute_value_similarity(self.values[i], self.values[j])
-                        diversity_scores.append(1.0 - sim)
+                if self.semantic_embeddings[i] is not None:
+                    sim = float(np.dot(semantic_vec, self.semantic_embeddings[i])) # 假设已归一化
+                    semantic_sim = max(semantic_sim, sim)
             
-            if diversity_scores:
-                avg_diversity = np.mean(diversity_scores)
-                if avg_diversity < 0.3:  # 因子过于相似
-                    self.current_diversity_threshold = min(
-                        self.current_diversity_threshold * 1.1,
-                        0.8
-                    )
-    
-    def _add_factor(
-        self,
-        expr: Expression,
-        value: Tensor,
-        ic_ret: float,
-        ic_mut: np.ndarray,
-        embedding: Optional[Tensor] = None
-    ):
-        """向池中添加因子，并同步更新基类状态"""
-        n = self.size
+            if semantic_sim > self.semantic_sim_threshold:
+                self._log_rejection(expr, train_ic_adj, max_pool_corr, "semantic_duplicate")
+                return max(train_ic_adj, 1e-10), 1.0 - semantic_sim
+
+        # 9. 计算综合得分 (Composite Score)
+        novelty = 1.0 - max(max_pool_corr, semantic_sim)
+        score = self._composite_score(train_metrics, valid_metrics, novelty, q_report)
+        
+        # 10. 入池或替换 (Add / Replace)
+        added = self._add_or_replace(
+            expr=expr,
+            value=value,
+            ic_ret=train_ic_adj,
+            score=score,
+            embedding=embedding,
+            semantic_embedding=semantic_vec,
+            quality=q_report,
+            metrics={"train": train_metrics, "valid": valid_metrics},
+            canonical=canonical,
+            expr_hash=expr_hash
+        )
+        
+        if added:
+            self.stats['pool_additions'] += 1
+            logger.info(f"[Pool Add] {expr} (Score: {score:.4f}, IC: {train_ic_adj:.4f})")
+        else:
+            self.stats['pool_rejections'] += 1
+            
+        return max(train_ic_adj, 1e-10) + 0.2 * novelty, novelty
+
+    def _composite_score(self, train_metrics, valid_metrics, novelty, q_report) -> float:
+        """计算综合得分用于入池排序"""
+        # 基础分来自 Valid IC (如果没跑 valid 就用 train)
+        ic_score = valid_metrics["ic_adj"] if valid_metrics else train_metrics["ic_adj"]
+        rank_ic_score = valid_metrics["rank_ic_adj"] if valid_metrics else train_metrics["rank_ic_adj"]
+        
+        score = 1.0 * ic_score + 0.5 * rank_ic_score + 0.2 * novelty
+        
+        # 复杂度奖励
+        if q_report:
+            if q_report.complexity <= 18:
+                score += 0.05 * np.log1p(q_report.complexity)
+            else:
+                score -= 0.01 * (q_report.complexity - 18) # 过度复杂惩罚
+                
+        # 稳定性惩罚 (如果 positive_ic_ratio 太低)
+        if valid_metrics and valid_metrics.get("positive_ic_ratio", 0) < 0.52:
+            score -= 0.1
+            
+        return score
+
+    def _add_or_replace(self, expr, value, ic_ret, score, **meta) -> bool:
+        """重构后的入池与替换逻辑"""
         if self.size < self.capacity:
-            # 池未满，直接追加
-            self.exprs.append(expr)
-            self.values.append(value)
-            self.single_ics[n] = ic_ret
-            self.embeddings[n] = embedding
+            idx = self.size
             self.size += 1
         else:
-            # 池已满，替换最差的（基于 IC）
-            n = np.argmin(self.single_ics[:self.capacity])
-            self.exprs[n] = expr
-            self.values[n] = value
-            self.single_ics[n] = ic_ret
-            self.embeddings[n] = embedding
+            # 找到池中得分最低的
+            idx = int(np.argmin(self.composite_scores[:self.capacity]))
+            if score <= self.composite_scores[idx]:
+                self._log_rejection(expr, ic_ret, 0.0, "score_not_better_than_worst")
+                return False
             
-        logger.info(f"Factor added to pool at index {n}: {expr} (IC: {ic_ret:.4f})")
+            # 替换前先移除旧哈希
+            old_hash = self.canonical_hashes_by_slot[idx]
+            if old_hash in self.canonical_hashes:
+                self.canonical_hashes.remove(old_hash)
+        
+        # 更新存储
+        if idx < len(self.exprs):
+            self.exprs[idx] = expr
+            self.values[idx] = value
+        else:
+            self.exprs.append(expr)
+            self.values.append(value)
+            
+        self.single_ics[idx] = ic_ret
+        self.composite_scores[idx] = score
+        self.embeddings[idx] = meta.get("embedding")
+        self.semantic_embeddings[idx] = meta.get("semantic_embedding")
+        self.metric_records[idx] = meta.get("metrics")
+        self.quality_records[idx] = meta.get("quality")
+        self.canonical_exprs[idx] = meta.get("canonical")
+        self.canonical_hashes_by_slot[idx] = meta.get("expr_hash")
+        
+        if meta.get("expr_hash"):
+            self.canonical_hashes.add(meta.get("expr_hash"))
+            
+        return True
+
+    def _update_adaptive_thresholds(self):
+        """更新自适应阈值 (重构版)"""
+        if self.size < max(10, self.capacity // 4):
+            return
+        
+        # 获取池中因子的 Valid IC (如果可用)
+        valid_ics = []
+        for rec in self.metric_records[:self.size]:
+            if rec and "valid" in rec and rec["valid"]:
+                valid_ics.append(rec["valid"]["ic_adj"])
+            elif rec and "train" in rec:
+                valid_ics.append(rec["train"]["ic_adj"])
+        
+        if len(valid_ics) >= 10:
+            # 将门槛设置为当前池中 40% 分位数的 IC
+            target = float(np.percentile(valid_ics, 40))
+            if target > self.min_train_ic:
+                self.min_train_ic = max(self.min_train_ic, target * 0.9)
+                self.stats['adaptive_threshold_updates'] = self.stats.get('adaptive_threshold_updates', 0) + 1
     
     def _pop(self) -> None:
         """移除池中IC最低的因子"""
@@ -511,39 +529,45 @@ class AlphaPoolGFN(AlphaPool):
         super()._swap_idx(i, j)
         self.embeddings[i], self.embeddings[j] = self.embeddings[j], self.embeddings[i]
     
-    def get_stats(self) -> Dict[str, Any]:
-        """获取池的统计信息"""
-        return {
-            **self.stats,
-            'pool_size': self.size,
-            'pool_capacity': self.capacity,
-            'current_ic_threshold': self.current_ic_threshold,
-            'current_diversity_threshold': self.current_diversity_threshold,
-            'best_ic': float(np.max(self.single_ics[:self.size])) if self.size > 0 else 0.0,
-            'mean_ic': float(np.mean(self.single_ics[:self.size])) if self.size > 0 else 0.0,
-            'cache_hit_rate': self.stats['cache_hits'] / max(1, self.stats['total_evaluations']),
-        }
-    
-    def clear_cache(self):
-        """清除缓存"""
-        if self.cache_manager:
-            self.cache_manager.clear()
-            logger.info("Cache cleared")
-    
     def export_pool(self, output_path: str):
-        """导出池到文件"""
+        """导出池到文件 (增强版)"""
         pool_data = {
             'expressions': [str(expr) for expr in self.exprs[:self.size]],
-            'ics': self.single_ics[:self.size].tolist() if hasattr(self, 'single_ics') else [],
+            'canonical_expressions': [str(c) for c in self.canonical_exprs[:self.size]],
+            'ics': self.single_ics[:self.size].tolist(),
+            'composite_scores': self.composite_scores[:self.size].tolist(),
+            'metrics': [m for m in self.metric_records[:self.size]],
+            'quality': [asdict(q) if q else None for q in self.quality_records[:self.size]],
             'stats': self.get_stats(),
-            'embeddings': [e.tolist() if e is not None else None for e in self.embeddings[:self.size]]
         }
         
         import json
-        with open(output_path, 'w') as f:
-            json.dump(pool_data, f, indent=2)
+        def default_serializer(obj):
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, torch.Tensor):
+                return obj.detach().cpu().numpy().tolist()
+            return str(obj)
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(pool_data, f, indent=2, default=default_serializer)
         
         logger.info(f"Pool exported to {output_path}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """获取池的统计信息"""
+        stats = {
+            **self.stats,
+            'pool_size': self.size,
+            'pool_capacity': self.capacity,
+            'best_ic': float(np.max(self.single_ics[:self.size])) if self.size > 0 else 0.0,
+            'mean_ic': float(np.mean(self.single_ics[:self.size])) if self.size > 0 else 0.0,
+            'best_score': float(np.max(self.composite_scores[:self.size])) if self.size > 0 else 0.0,
+            'mean_score': float(np.mean(self.composite_scores[:self.size])) if self.size > 0 else 0.0,
+        }
+        if self.semantic_embedder:
+            stats.update(self.semantic_embedder.stats)
+        return stats
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

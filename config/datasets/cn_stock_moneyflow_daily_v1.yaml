@@ -1,0 +1,63 @@
+dataset_id: cn.stock.moneyflow.daily.v1
+name: CN Stock Moneyflow Daily V1
+region: cn
+market: a_share
+asset_type: equity
+frequency: daily
+freq_group: eod
+domain: A
+timezone: Asia/Shanghai
+calendar: cn_stock
+data_dir: D:/Trading/data_ever_26_3_14/data/silver
+
+datahub:
+  profile: config/datahub/tushare_duckdb.yaml
+  required_datasets:
+    - stock_moneyflow
+    - stock_daily
+
+files:
+  raw:
+    A: stock_moneyflow
+  filled:
+    A: stock_daily
+  atomic:
+    A: stock_moneyflow_atomic
+
+columns:
+  date: trade_date
+  code: ts_code
+  buy_sm_vol: buy_sm_vol
+  buy_sm_amount: buy_sm_amount
+  sell_sm_vol: sell_sm_vol
+  sell_sm_amount: sell_sm_amount
+  buy_md_vol: buy_md_vol
+  buy_md_amount: buy_md_amount
+  sell_md_vol: sell_md_vol
+  sell_md_amount: sell_md_amount
+  buy_lg_vol: buy_lg_vol
+  buy_lg_amount: buy_lg_amount
+  sell_lg_vol: sell_lg_vol
+  sell_lg_amount: sell_lg_amount
+  buy_elg_vol: buy_elg_vol
+  buy_elg_amount: buy_elg_amount
+  sell_elg_vol: sell_elg_vol
+  sell_elg_amount: sell_elg_amount
+  net_mf_vol: net_mf_vol
+  net_mf_amount: net_mf_amount
+  close: close
+
+target:
+  expression: forward_return
+  price_column: close
+  fallback_price_columns: [adj_close, close]
+  label_days: 5
+
+date_range:
+  start: "20150101"
+  end: "20260423"
+
+layers_enabled:
+  - raw
+  - filled
+  - atomic

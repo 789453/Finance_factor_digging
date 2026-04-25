@@ -199,13 +199,17 @@ class ParquetFeatureLoaderV2:
             # 根据 read_mode 决定搜索顺序
             search_layers = []
             if self.read_mode == "stack":
-                # stack 模式：显式匹配层
-                # 假设 feature 已经带了层信息，或者通过 registry 获取
-                feat_spec = self.registry_manager.get_feature_spec(feat) # 假设有这个方法
-                if feat_spec and feat_spec.layer in self.layer_sources:
-                    search_layers = [feat_spec.layer]
-                else:
-                    search_layers = self.layers
+                # stack 模式：优先匹配注册表中的层，如果不匹配则搜索所有启用层
+                feat_spec = self.registry_manager.get_feature_spec(feat)
+                preferred_layer = feat_spec.layer if feat_spec else None
+                
+                search_layers = []
+                if preferred_layer and preferred_layer in self.layers:
+                    search_layers.append(preferred_layer)
+                
+                for layer in self.layers:
+                    if layer not in search_layers:
+                        search_layers.append(layer)
             elif self.read_mode == "raw":
                 search_layers = ["raw"]
             elif self.read_mode == "filled":
@@ -228,9 +232,13 @@ class ParquetFeatureLoaderV2:
                 if actual_col: candidates.append(actual_col)
                 candidates.extend([feat, feat.lower(), f"{feat}_robust", f"{feat}_raw"])
                 
+                # 准备可用列名的映射（小写 -> 原始名）
+                col_map = {c.lower(): c for c in src.available_columns}
+                
                 for cand in candidates:
-                    if cand in src.available_columns:
-                        plan.append((feat, layer, cand))
+                    cand_lower = cand.lower()
+                    if cand_lower in col_map:
+                        plan.append((feat, layer, col_map[cand_lower]))
                         found = True
                         break
                 if found: break

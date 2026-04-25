@@ -56,7 +56,7 @@ class MiningJobSpec:
         self.raw.setdefault("final_weight_ratio", 0.0)
         self.raw.setdefault("label_days", 10)
         self.raw.setdefault("max_expr_length", 20)
-        self.raw.setdefault("mask_dropout_prob", 1.0)
+        self.raw.setdefault("mask_dropout_prob", 0.0)
         self.raw.setdefault("log_freq", 1000)
         self.raw.setdefault("status_filter", ["active", "watch"])
         self.raw.setdefault("max_backtrack_days", 100)

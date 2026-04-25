@@ -1,0 +1,21 @@
+{
+  "job_id": "test_moneyflow_mining_20260425",
+  "dataset_id": "cn.stock.moneyflow.daily.v1",
+  "family_id": "moneyflow_ts_complex",
+  "train_range": [
+    "20200101",
+    "20231231"
+  ],
+  "test_range": [
+    "20240101",
+    "20250331"
+  ],
+  "seed": 0,
+  "cuda": "cuda:0",
+  "status": "completed",
+  "start_time": "2026-04-25T15:21:54.758968",
+  "end_time": "2026-04-25T15:23:34.756135",
+  "best_ic": 0.0,
+  "pool_size": 0,
+  "log_dir": "runs\\test_moneyflow_mining_20260425_20260425_152154"
+}

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Set, Union, Literal, Any
 from datetime import datetime
 
-# 定义ROOT路径
-ROOT = Path(__file__).parent.parent
+# 定义ROOT路径为项目根目录
+ROOT = Path(__file__).parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
@@ -69,27 +69,52 @@ class FeatureRegistryManagerV2:
         logger.info(f"Registered features from dataset meta for domain {domain}")
 
     def _load_registries(self):
-        # 简化版：如果文件不存在则使用默认值
+        """
+        初始化特征注册表。
+        不再使用硬编码的默认特征，特征应通过 register_from_dataset_meta 动态注册，
+        或从 CSV 注册表文件加载。
+        """
         self.features: Dict[str, FeatureSpec] = {}
         
-        # 默认原始特征
-        default_raw = [
-            ("open", "price"), ("high", "price"), ("low", "price"), ("close", "price"),
-            ("volume", "volume"), ("amount", "volume"), ("turnover", "volume"), ("vwap", "price")
-        ]
-        for name, cat in default_raw:
-            self.features[name.upper()] = FeatureSpec(
-                name=name, domain="A", layer="raw", category=cat, description=name
-            )
-            
-        # 默认原子特征
-        default_atomic = [
-            ("ret_1", "momentum"), ("ret_5", "momentum"), ("ret_10", "momentum"), ("ret_20", "momentum")
-        ]
-        for name, cat in default_atomic:
-            self.features[name.upper()] = FeatureSpec(
-                name=name, domain="A", layer="atomic", category=cat, description=name
-            )
+        # 1. 尝试加载原始特征注册表
+        if os.path.exists(self.raw_registry_path):
+            try:
+                df = pd.read_csv(self.raw_registry_path)
+                # 处理列名差异
+                name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
+                for _, row in df.iterrows():
+                    spec = FeatureSpec(
+                        name=row[name_col],
+                        domain=row.get('domain', 'A'),
+                        layer='raw',
+                        category=row.get('category', 'unknown'),
+                        description=row.get('description', ''),
+                        status=row.get('status', 'active')
+                    )
+                    self.register_feature(spec)
+                logger.info(f"Loaded {len(df)} features from {self.raw_registry_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load raw registry from {self.raw_registry_path}: {e}")
+
+        # 2. 尝试加载原子特征注册表
+        if os.path.exists(self.atomic_registry_path):
+            try:
+                df = pd.read_csv(self.atomic_registry_path)
+                # 处理列名差异
+                name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
+                for _, row in df.iterrows():
+                    spec = FeatureSpec(
+                        name=row[name_col],
+                        domain=row.get('domain', 'A'),
+                        layer='atomic',
+                        category=row.get('category', 'momentum'),
+                        description=row.get('description', ''),
+                        status=row.get('status', 'active')
+                    )
+                    self.register_feature(spec)
+                logger.info(f"Loaded {len(df)} atomic features from {self.atomic_registry_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load atomic registry from {self.atomic_registry_path}: {e}")
 
     def get_feature_spec(self, feature_name: str) -> Optional[FeatureSpec]:
         return self.features.get(feature_name.upper())

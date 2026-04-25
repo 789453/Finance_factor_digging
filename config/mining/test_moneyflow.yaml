@@ -1,0 +1,39 @@
+job_id: test_moneyflow_mining_20260425
+dataset_id: cn.stock.moneyflow.daily.v1
+family_id: moneyflow_ts_complex
+name: Moneyflow Complex Mining Test
+
+# --- 核心作业参数 (必须在顶层) ---
+train_start: "20200101"
+train_end: "20231231"
+test_start: "20240101"
+test_end: "20250331"
+
+n_episodes: 50      # 修正：移动到顶层，设置较小值用于测试
+log_freq: 1         # 修正：移动到顶层
+pool_capacity: 50
+label_days: 5
+max_expr_length: 20
+max_backtrack_days: 60
+max_future_days: 20
+entropy_coef: 0.01
+segment_name: "test_segment"
+
+# --- 实验/底层参数 (在 raw 字典内) ---
+raw:
+  layers: ["raw", "filled", "atomic"]
+  valid_start: "20240101"
+  valid_end: "20240630"
+  
+  batch_size: 8
+  learning_rate: 0.001 # 修正：名称对齐
+  
+  # 质量门槛
+  ic_threshold: 0.015
+  min_valid_ic: 0.005
+  min_complexity: 6
+  min_operators: 3
+  
+  # 性能优化
+  enable_ollama_embedding: True
+  entry_strategy: "composite"

@@ -1,7 +1,0 @@
-[
-  "Ref(close, -5) / close - 1",
-  "TsMean(close, 20) / close - 1",
-  "TsStd(volume, 20)",
-  "Rank(Ref(close, -1))",
-  "TsMean(Ref(close, -1), 10) / TsMean(close, 10) - 1"
-]

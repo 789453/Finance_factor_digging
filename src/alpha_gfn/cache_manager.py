@@ -11,6 +11,13 @@ class CacheKeyBuilder:
     """构建缓存 key"""
     
     @staticmethod
+    def build_key(expr, data_hash: str = "", config_hash: str = "") -> str:
+        """构建通用缓存 key"""
+        expr_str = str(expr)
+        raw = f"{expr_str}|{data_hash}|{config_hash}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    
+    @staticmethod
     def expr_key(expr_str: str, data_hash: str) -> str:
         """表达式值缓存 key: hash(expr_str + data_hash)"""
         raw = f"expr:{expr_str}|data:{data_hash}"

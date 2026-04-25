@@ -27,6 +27,9 @@ from alphagen_generic.feature_registry_manager_v2 import FeatureRegistryManagerV
 from alphagen.data.expression import Expression, Feature, Ref, Abs, Log, Sign
 from alpha_gfn.alpha_pool_v2 import AlphaPoolGFN
 from alpha_gfn.env.core import GFNEnvCore
+from alpha_gfn.expression_quality import ExpressionQualityValidator
+from alpha_gfn.semantic_embedding import OllamaExpressionEmbedder
+from evaluation.factor_metrics import FactorMetricsEvaluator
 from alpha_gfn.modules import SequenceEncoder, SimpleNeuralNet
 from alpha_gfn.gflownet import EntropyTBGFlowNet
 from alpha_gfn.config import HIDDEN_DIM
@@ -114,7 +117,7 @@ def load_runtime_specs(job_spec_path: str, dataset_meta_path: Optional[str]) -> 
     family_spec = load_family_spec(job_spec.family_id)
     return job_spec, dataset_meta, family_spec
 
-def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, device: torch.device) -> Tuple[FeatureRegistryManagerV2, Optional[DuckDBDataHub], ParquetFeatureLoaderV2, ParquetFeatureLoaderV2]:
+def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, device: torch.device) -> Tuple[FeatureRegistryManagerV2, Optional[DuckDBDataHub], ParquetFeatureLoaderV2, ParquetFeatureLoaderV2, ParquetFeatureLoaderV2]:
     registry = FeatureRegistryManagerV2()
     registry.register_from_dataset_meta(dataset_meta)
     
@@ -151,11 +154,16 @@ def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, devic
     })
     
     train_loader = ParquetFeatureLoaderV2(start_time=job_spec.train_start, end_time=job_spec.train_end, **common_kwargs)
+    
+    valid_start = job_spec.raw.get("valid_start", job_spec.test_start)
+    valid_end = job_spec.raw.get("valid_end", job_spec.test_end)
+    valid_loader = ParquetFeatureLoaderV2(start_time=valid_start, end_time=valid_end, **common_kwargs)
+    
     test_loader = ParquetFeatureLoaderV2(start_time=job_spec.test_start, end_time=job_spec.test_end, **common_kwargs)
     
-    return registry, datahub, train_loader, test_loader
+    return registry, datahub, train_loader, valid_loader, test_loader
 
-def build_alpha_context(job_spec, dataset_meta, family_spec, registry, train_loader):
+def build_alpha_context(job_spec, dataset_meta, family_spec, registry, train_loader, valid_loader=None, test_loader=None):
     # Search Space
     features, operators, delta_times, constants = build_family_search_space(family_spec, dataset_meta)
     
@@ -176,20 +184,45 @@ def build_alpha_context(job_spec, dataset_meta, family_spec, registry, train_loa
     horizon = int(target_cfg.get("label_days", job_spec.label_days))
     target = Ref(base, -horizon) / base - 1
     
+    # Quality Validator
+    quality_validator = ExpressionQualityValidator(
+        min_complexity=job_spec.raw.get("min_complexity", 6),
+        min_ts_operators=job_spec.raw.get("min_ts_operators", 1),
+        min_operators=job_spec.raw.get("min_operators", 2),
+        min_features=job_spec.raw.get("min_features", 1),
+    )
+
+    # Semantic Embedder
+    semantic_embedder = None
+    if job_spec.raw.get("enable_ollama_embedding", False):
+        semantic_embedder = OllamaExpressionEmbedder(
+            model=job_spec.raw.get("ollama_model", "qwen3-embedding:0.6b"),
+            batch_size=job_spec.raw.get("embedding_batch_size", 32)
+        )
+
+    # Metrics Evaluator
+    metrics_evaluator = FactorMetricsEvaluator(device=str(train_loader.device))
+
     # Pool
     pool = AlphaPoolGFN(
         capacity=job_spec.pool_capacity,
         stock_data=train_loader,
         target=target,
-        ic_mut_threshold=job_spec.raw.get("ic_mut_threshold", 0.90),
-        entry_strategy=job_spec.raw.get("entry_strategy", "diversity_aware"),
-        diversity_weight=job_spec.raw.get("diversity_weight", 0.3),
-        min_ic_threshold=job_spec.raw.get("ic_threshold", 0.03),
+        valid_data=valid_loader,
+        test_data=test_loader,
+        metrics_evaluator=metrics_evaluator,
+        quality_validator=quality_validator,
+        semantic_embedder=semantic_embedder,
+        ic_mut_threshold=job_spec.raw.get("ic_mut_threshold", 0.60),
+        entry_strategy=job_spec.raw.get("entry_strategy", "composite"),
+        min_train_ic=job_spec.raw.get("ic_threshold", 0.015),
+        min_valid_ic=job_spec.raw.get("min_valid_ic", 0.005),
+        semantic_sim_threshold=job_spec.raw.get("semantic_sim_threshold", 0.92),
     )
     
-    return target, feature_members, operators, delta_times, constants, pool
+    return target, feature_members, operators, delta_times, constants, pool, quality_validator
 
-def build_gfn_context(job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device):
+def build_gfn_context(job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device, quality_validator=None):
     # Env
     env = GFNEnvCore(
         pool=pool, device=device, custom_features=features,
@@ -197,7 +230,9 @@ def build_gfn_context(job_spec, pool, registry, dataset_meta, features, operator
         max_expr_length=job_spec.max_expr_length,
         mask_dropout_prob=job_spec.raw.get("mask_dropout_prob", 0.0),
         ssl_weight=job_spec.raw.get("ssl_weight", 1.0),
-        nov_weight=job_spec.raw.get("nov_weight", 0.3)
+        nov_weight=job_spec.raw.get("nov_weight", 0.3),
+        quality_validator=quality_validator,
+        min_expr_length=job_spec.raw.get("min_expr_length", 6)
     )
     
     # GFN Chain
@@ -219,7 +254,9 @@ def build_gfn_context(job_spec, pool, registry, dataset_meta, features, operator
     return env, gfn, sampler, optimizer
 
 def run_training_loop(ctx: MiningRuntimeContext) -> Dict[str, Any]:
-    logger.info(f"Starting GFN training loop for {ctx.job_spec.n_episodes} episodes...")
+    job_spec = ctx.job_spec
+    n_episodes = job_spec.n_episodes
+    logger.info(f"Starting GFN training loop for {n_episodes} episodes...")
     
     # Create run manifest
     manifest = {
@@ -243,7 +280,7 @@ def run_training_loop(ctx: MiningRuntimeContext) -> Dict[str, Any]:
         total_steps=ctx.job_spec.n_episodes
     )
     
-    pbar = tqdm(range(ctx.job_spec.n_episodes))
+    pbar = tqdm(range(n_episodes))
     log_freq = ctx.job_spec.log_freq
     checkpoint_freq = ctx.job_spec.raw.get("checkpoint_freq", 1000)
 
@@ -267,7 +304,12 @@ def run_training_loop(ctx: MiningRuntimeContext) -> Dict[str, Any]:
             
             if episode % log_freq == 0:
                 stats = ctx.pool.get_stats()
-                pbar.set_postfix(loss=f"{loss.item():.4f}", best_ic=f"{stats['best_ic']:.4f}")
+                pbar.set_postfix(
+                    loss=f"{loss.item():.4f}", 
+                    pool=f"{stats['pool_size']}",
+                    best_ic=f"{stats['best_ic']:.4f}",
+                    mean_score=f"{stats.get('mean_score', 0):.4f}"
+                )
 
         # Periodic checkpoint
         if (episode + 1) % checkpoint_freq == 0:
@@ -319,15 +361,16 @@ def mine_factors(job_spec_path: str, dataset_meta_path: Optional[str] = None,
         device = torch.device(f'cuda:{cuda_override}' if cuda_override is not None and torch.cuda.is_available() else 
                              torch.device(f'cuda:{job_spec.raw.get("cuda", 0)}' if torch.cuda.is_available() and job_spec.raw.get("cuda", 0) >= 0 else 'cpu'))
     
-    registry, datahub, train_loader, test_loader = build_data_context(job_spec, dataset_meta, device)
+    registry, datahub, train_loader, valid_loader, test_loader = build_data_context(job_spec, dataset_meta, device)
     
-    target, features, operators, delta_times, constants, pool = build_alpha_context(
-        job_spec, dataset_meta, family_spec, registry, train_loader
+    target, features, operators, delta_times, constants, pool, quality_validator = build_alpha_context(
+        job_spec, dataset_meta, family_spec, registry, train_loader, valid_loader, test_loader
     )
     
     # GFN Environment
     env, gfn, sampler, optimizer = build_gfn_context(
-        job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device
+        job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device,
+        quality_validator=quality_validator
     )
     
     if log_dir is None:
