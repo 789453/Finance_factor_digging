@@ -27,7 +27,7 @@ class MiningJobSpec:
         "ssl_weight", "nov_weight", "weight_decay_type", "final_weight_ratio",
         "label_days", "max_expr_length", "mask_dropout_prob", "log_freq",
         "status_filter", "max_backtrack_days", "max_future_days", "use_filled",
-        "cache_root", "output_dir", "run_name", "seed", "cuda"
+        "cache_root", "output_dir", "run_name", "seed", "cuda", "domain"
     ]
     
     def __init__(self, spec_dict: Dict[str, Any]):
@@ -66,10 +66,25 @@ class MiningJobSpec:
         self.raw.setdefault("seed", 0)
         self.raw.setdefault("cuda", 0)
         
+        # 如果没有显式提供domain，尝试从dataset_id推断（保留兼容性）
+        if "domain" not in self.raw:
+            self.raw["domain"] = self._infer_domain()
+            
         # 设置时间戳
         if "created_at" not in self.raw:
             self.raw["created_at"] = datetime.now().isoformat()
     
+    def _infer_domain(self) -> str:
+        """从dataset_id推断域"""
+        dataset_id = self.raw.get("dataset_id", "")
+        if ".a_share." in dataset_id:
+            return "A"
+        elif "pv_daily" in dataset_id:
+            return "pv_daily"
+        elif "moneyflow" in dataset_id:
+            return "moneyflow"
+        return "A"
+
     def validate(self) -> List[str]:
         """验证作业规格"""
         errors = []
@@ -112,51 +127,6 @@ class MiningJobSpec:
         """转换为字典"""
         return self.raw.copy()
     
-    def to_args(self) -> Dict[str, Any]:
-        """转换为命令行参数字典"""
-        args = {}
-        
-        # 映射字段到命令行参数
-        field_mapping = {
-            "n_episodes": "n_episodes",
-            "pool_capacity": "pool_capacity",
-            "encoder_type": "encoder_type",
-            "entropy_coef": "entropy_coef",
-            "ssl_weight": "ssl_weight",
-            "nov_weight": "nov_weight",
-            "weight_decay_type": "weight_decay_type",
-            "final_weight_ratio": "final_weight_ratio",
-            "label_days": "label_days",
-            "max_expr_length": "max_expr_length",
-            "mask_dropout_prob": "mask_dropout_prob",
-            "log_freq": "log_freq",
-            "status_filter": "status_filter",
-            "max_backtrack_days": "max_backtrack_days",
-            "max_future_days": "max_future_days",
-            "use_filled": "use_filled",
-            "cache_root": "cache_root",
-            "output_dir": "output_dir",
-            "run_name": "run_name",
-            "seed": "seed",
-            "cuda": "cuda"
-        }
-        
-        for spec_field, arg_field in field_mapping.items():
-            if spec_field in self.raw:
-                args[arg_field] = self.raw[spec_field]
-        
-        # 特殊处理
-        if "train_start" in self.raw:
-            args["train_start"] = self.raw["train_start"]
-        if "train_end" in self.raw:
-            args["train_end"] = self.raw["train_end"]
-        if "test_start" in self.raw:
-            args["test_start"] = self.raw["test_start"]
-        if "test_end" in self.raw:
-            args["test_end"] = self.raw["test_end"]
-        
-        return args
-    
     # 属性访问
     @property
     def job_id(self) -> str:
@@ -194,7 +164,10 @@ class MiningJobSpec:
     def test_end(self) -> str:
         return self.raw.get("test_end", "20211231")
     
-    # 可选字段属性
+    @property
+    def domain(self) -> str:
+        return self.raw.get("domain", "A")
+
     @property
     def status_filter(self) -> List[str]:
         return self.raw.get("status_filter", ["active", "watch"])
@@ -259,16 +232,12 @@ class MiningJobSpec:
     def cuda(self) -> int:
         return self.raw.get("cuda", 0)
 
+    @property
+    def log_freq(self) -> int:
+        return self.raw.get("log_freq", 1000)
+
 def load_job_spec(spec_path: str) -> MiningJobSpec:
-    """
-    加载作业规格
-    
-    Args:
-        spec_path: 规格文件路径
-        
-    Returns:
-        MiningJobSpec实例
-    """
+    """加载作业规格"""
     if not os.path.exists(spec_path):
         raise FileNotFoundError(f"Job spec file not found: {spec_path}")
     
@@ -285,121 +254,13 @@ def load_job_spec(spec_path: str) -> MiningJobSpec:
     
     return MiningJobSpec(spec_dict)
 
-def save_job_spec(job_spec: MiningJobSpec, output_path: str):
-    """
-    保存作业规格
-    
-    Args:
-        job_spec: 作业规格
-        output_path: 输出文件路径
-    """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
-    ext = os.path.splitext(output_path)[1].lower()
-    spec_dict = job_spec.to_dict()
-    
-    if ext in ['.yaml', '.yml']:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            yaml.dump(spec_dict, f, default_flow_style=False, allow_unicode=True)
-    elif ext == '.json':
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(spec_dict, f, indent=2, ensure_ascii=False)
-    else:
-        raise ValueError(f"Unsupported output format: {ext}")
-    
-    logger.info(f"Saved job spec to {output_path}")
-
-def create_default_job_spec(job_id: str, name: str, dataset_id: str, family_id: str, 
-                          segment_name: str = "default") -> MiningJobSpec:
-    """
-    创建默认的作业规格
-    
-    Args:
-        job_id: 作业ID
-        name: 作业名称
-        dataset_id: 数据集ID
-        family_id: 因子族ID
-        segment_name: 区段名称
-        
-    Returns:
-        默认MiningJobSpec实例
-    """
-    spec_dict = {
-        "job_id": job_id,
-        "name": name,
-        "dataset_id": dataset_id,
-        "family_id": family_id,
-        "segment_name": segment_name,
-        "version": "1.0",
-        "description": f"Default job spec for {family_id}",
-        "tags": ["default", "auto-generated"],
-        "priority": "medium",
-        "owner": "system",
-        "train_start": "20200101",
-        "train_end": "20201231",
-        "test_start": "20210101",
-        "test_end": "20211231",
-        "n_episodes": 10000,
-        "pool_capacity": 50,
-        "encoder_type": "gnn",
-        "entropy_coef": 0.01,
-        "ssl_weight": 1.0,
-        "nov_weight": 0.3,
-        "weight_decay_type": "linear",
-        "final_weight_ratio": 0.0,
-        "label_days": 10,
-        "max_expr_length": 20,
-        "mask_dropout_prob": 1.0,
-        "log_freq": 1000,
-        "status_filter": ["active", "watch"],
-        "max_backtrack_days": 100,
-        "max_future_days": 30,
-        "use_filled": True,
-        "cache_root": "data/cache",
-        "seed": 0,
-        "cuda": 0
-    }
-    
-    return MiningJobSpec(spec_dict)
-
-def list_job_specs(spec_dir: str = "config/jobs") -> List[str]:
-    """
-    列出可用的作业规格
-    
-    Args:
-        spec_dir: 规格文件目录
-        
-    Returns:
-        可用的作业规格ID列表
-    """
-    if not os.path.exists(spec_dir):
-        return []
-    
-    job_specs = []
-    for filename in os.listdir(spec_dir):
-        if filename.endswith(('.yaml', '.yml', '.json')):
-            job_id = os.path.splitext(filename)[0]
-            job_specs.append(job_id)
-    
-    return sorted(job_specs)
-
 class JobSpecValidator:
     """作业规格验证器"""
     
     @staticmethod
     def validate_compatibility(job_spec: MiningJobSpec, dataset_meta: Dict[str, Any], 
                              family_spec: Dict[str, Any]) -> List[str]:
-        """
-        验证作业规格与数据集和因子族的兼容性
-        
-        Args:
-            job_spec: 作业规格
-            dataset_meta: 数据集元数据
-            family_spec: 因子族规格
-            
-        Returns:
-            兼容性错误列表
-        """
+        """验证作业规格与数据集和因子族的兼容性"""
         errors = []
         
         # 验证数据集ID
@@ -410,14 +271,17 @@ class JobSpecValidator:
         if job_spec.family_id != family_spec.get("family_id"):
             errors.append(f"Job family_id '{job_spec.family_id}' != spec family_id '{family_spec.get('family_id')}'")
         
-        # 验证域兼容性 - 使用dataset_meta的domain而不是解析dataset_id
-        meta_domain = dataset_meta.get("domain", "unknown")
-        # 如果meta中有domain字段，则验证；否则跳过验证
-        if meta_domain != "unknown":
-            # 从dataset_meta获取domain，而不是解析dataset_id
-            job_domain_from_meta = dataset_meta.get("domain", "A")
-            if job_domain_from_meta != meta_domain:
-                errors.append(f"Job domain from meta '{job_domain_from_meta}' != meta domain '{meta_domain}'")
+        # 验证域兼容性
+        meta_domain = dataset_meta.get("domain")
+        allowed_domains = family_spec.get("allowed_domains", [])
+        if allowed_domains and meta_domain not in allowed_domains:
+            errors.append(f"Dataset domain '{meta_domain}' not allowed by family '{job_spec.family_id}': {allowed_domains}")
+            
+        # 验证频率兼容性
+        meta_freq = dataset_meta.get("freq_group") or dataset_meta.get("frequency")
+        allowed_freqs = family_spec.get("allowed_freq_groups", [])
+        if allowed_freqs and meta_freq not in allowed_freqs:
+            errors.append(f"Dataset frequency '{meta_freq}' not allowed by family: {allowed_freqs}")
         
         # 验证日期范围
         if job_spec.train_start < dataset_meta.get("date_range", {}).get("start", "00000000"):
@@ -425,48 +289,18 @@ class JobSpecValidator:
         
         if job_spec.test_end > dataset_meta.get("date_range", {}).get("end", "99999999"):
             errors.append(f"Job test_end '{job_spec.test_end}' after dataset end")
+            
+        # 验证层兼容性
+        dataset_layers = set(dataset_meta.get("layers_enabled", []))
+        family_layers = set(family_spec.get("enabled_layers", []))
+        if family_layers and not family_layers.issubset(dataset_layers):
+            errors.append(f"Family requires layers {family_layers - dataset_layers} not enabled in dataset")
+            
+        # 验证目标价格列
+        target_cfg = dataset_meta.get("target", {})
+        price_column = target_cfg.get("price_column", "close")
+        columns = dataset_meta.get("columns", {})
+        if price_column not in columns.values() and price_column not in columns:
+            errors.append(f"Target price_column '{price_column}' not found in dataset columns")
         
         return errors
-
-if __name__ == "__main__":
-    # 测试功能
-    logging.basicConfig(level=logging.INFO)
-    
-    # 创建默认规格
-    default_spec = create_default_job_spec("test_job_001", "Test Job", "cn.a_share.equity.daily.v1", "pv_ts_core")
-    print("Default job spec:")
-    print(yaml.dump(default_spec.to_dict(), default_flow_style=False))
-    
-    # 验证规格
-    errors = default_spec.validate()
-    if errors:
-        print(f"Validation errors: {errors}")
-    else:
-        print("✓ Specification is valid")
-    @property
-    def domain(self) -> str:
-        """获取域 - 从dataset_id中提取"""
-        dataset_id = self.raw.get("dataset_id", "")
-        # 从dataset_id中提取域，例如 "cn.a_share.equity.daily.v1" -> "A"
-        if ".a_share." in dataset_id:
-            return "A"
-        elif "pv_daily" in dataset_id:
-            return "pv_daily"
-        elif "moneyflow" in dataset_id:
-            return "moneyflow"
-        else:
-            return "A"  # 默认域
-
-    @property
-    def domain(self) -> str:
-        """获取域 - 从dataset_id中提取"""
-        dataset_id = self.raw.get("dataset_id", "")
-        # 从dataset_id中提取域，例如 "cn.a_share.equity.daily.v1" -> "A"
-        if ".a_share." in dataset_id:
-            return "A"
-        elif "pv_daily" in dataset_id:
-            return "pv_daily"
-        elif "moneyflow" in dataset_id:
-            return "moneyflow"
-        else:
-            return "A"  # 默认域

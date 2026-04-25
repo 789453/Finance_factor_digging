@@ -1,0 +1,36 @@
+dataset_id: global.fx.daily.v1
+name: Global FX Daily V1
+frequency: daily
+domain: FX
+data_dir: D:/Trading/data_ever_26_3_14/data
+asset_type: fx
+market: fx
+freq_group: eod
+
+columns:
+  date: trade_date
+  code: ts_code
+  open: bid_open
+  high: bid_high
+  low: bid_low
+  close: bid_close
+  ask_close: ask_close
+  volume: tick_qty
+
+target:
+  price_column: bid_close
+  fallback_price_columns: [ask_close]
+  expression: forward_return
+  label_days: 1
+
+files:
+  raw:
+    FX: silver.fact_fx_daily_selected
+  filled:
+    FX: silver.fact_fx_daily_selected
+
+layers_enabled: [raw, filled]
+
+date_range:
+  start: "20100101"
+  end: "20261231"

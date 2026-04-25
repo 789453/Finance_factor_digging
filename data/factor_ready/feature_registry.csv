@@ -39,3 +39,18 @@ hourly_volatility,E,stk_60_mins,daily,ts_code,trade_date,hourly_returns,std(hour
 volume_concentration_pm,E,stk_60_mins,daily,ts_code,trade_date,"vol_pm, vol_total",vol_pm / vol_total,ratio,float,1,1,none,none,none,,Afternoon volume concentration
 vwap_close_bias_1h,E,stk_60_mins,daily,ts_code,trade_date,"close, vwap_1h",(close - vwap_1h) / close,ratio,float,1,1,none,none,none,,Close vs 1H VWAP bias
 high_low_time_skew,E,stk_60_mins,daily,ts_code,trade_date,"high_time, low_time",high_time_idx - low_time_idx (normalized),score,float,1,1,none,none,none,,Timing skew of high/low
+open,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,open,open price,price,float,1,1,none,none,none,,Futures open
+high,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,high,high price,price,float,1,1,none,none,none,,Futures high
+low,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,low,low price,price,float,1,1,none,none,none,,Futures low
+vol,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,vol,volume,volume,float,1,1,none,none,none,,Futures volume
+amount,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,amount,amount,amount,float,1,1,none,none,none,,Futures amount
+oi,FUT,fact_cffex_fut_daily_selected,daily,ts_code,trade_date,oi,open interest,volume,float,1,1,none,none,none,,Futures open interest
+open,IDX,fact_index_daily_selected,daily,ts_code,trade_date,open,open price,price,float,1,1,none,none,none,,Index open
+high,IDX,fact_index_daily_selected,daily,ts_code,trade_date,high,high price,price,float,1,1,none,none,none,,Index high
+low,IDX,fact_index_daily_selected,daily,ts_code,trade_date,low,low price,price,float,1,1,none,none,none,,Index low
+vol,IDX,fact_index_daily_selected,daily,ts_code,trade_date,vol,volume,volume,float,1,1,none,none,none,,Index volume
+amount,IDX,fact_index_daily_selected,daily,ts_code,trade_date,amount,amount,amount,float,1,1,none,none,none,,Index amount
+bid_open,FX,fact_fx_daily_selected,daily,ts_code,trade_date,bid_open,bid open price,price,float,1,1,none,none,none,,FX bid open
+bid_high,FX,fact_fx_daily_selected,daily,ts_code,trade_date,bid_high,bid high price,price,float,1,1,none,none,none,,FX bid high
+bid_low,FX,fact_fx_daily_selected,daily,ts_code,trade_date,bid_low,bid low price,price,float,1,1,none,none,none,,FX bid low
+tick_qty,FX,fact_fx_daily_selected,daily,ts_code,trade_date,tick_qty,tick quantity,volume,float,1,1,none,none,none,,FX tick quantity

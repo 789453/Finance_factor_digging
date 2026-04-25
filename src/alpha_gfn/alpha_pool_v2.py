@@ -14,12 +14,9 @@ from alphagen.models.alpha_pool import AlphaPool
 from alphagen.data.expression import Expression
 from alphagen_generic.parquet_feature_loader import ParquetFeatureLoader
 try:
-    from .cache_manager import CacheManager, CacheKeyBuilder
+    from alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
 except ImportError:
-    try:
-        from cache_manager import CacheManager, CacheKeyBuilder
-    except ImportError:
-        from src.alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
+    from .cache_manager import CacheManager, CacheKeyBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +93,94 @@ class AlphaPoolGFN(AlphaPool):
         
         logger.info(f"Initialized AlphaPoolGFN with capacity={capacity}, strategy={entry_strategy}")
     
+    def try_new_expr_with_ssl(self, expr: Expression, embedding: Optional[Tensor] = None) -> Tuple[float, float, float]:
+        """
+        同时计算 IC 奖励、新颖性奖励和 SSL 奖励
+        
+        Args:
+            expr: 表达式
+            embedding: 嵌入向量
+            
+        Returns:
+            (ic_reward, nov_reward, ssl_reward) 元组
+        """
+        # 1. 获取 IC 和新颖性奖励
+        ic_reward, nov_reward = self.try_new_expr(expr, embedding)
+        
+        # 2. 计算 SSL 奖励
+        ssl_reward = 0.0
+        if embedding is not None and self.size > 1:
+            ssl_reward = self.compute_ssl_reward(expr, embedding)
+            
+        return ic_reward, nov_reward, ssl_reward
+
+    def compute_ssl_reward(self, expr: Expression, embedding: Tensor) -> float:
+        """计算 SSL 奖励"""
+        # 找到最近邻
+        neighbor_indices = self._find_k_nearest_neighbors(embedding, self.ssl_k, exclude_self=True)
+        if not neighbor_indices:
+            return 0.0
+            
+        # 计算权重
+        weights = self._compute_similarity_weights(embedding, neighbor_indices)
+        if len(weights) == 0:
+            return 0.0
+            
+        # 获取表达式值
+        try:
+            query_value = self._normalize_by_day(expr.evaluate(self.data))
+        except:
+            return 0.0
+            
+        # 计算一致性损失
+        consistency_loss = self._compute_consistency_loss(query_value, neighbor_indices, weights)
+        
+        # 转换为奖励
+        return float(np.exp(-consistency_loss))
+
+    def _find_k_nearest_neighbors(self, query_embedding: Tensor, k: int, exclude_self: bool = True) -> List[int]:
+        """寻找 k 个最近邻"""
+        distances = []
+        valid_indices = []
+        
+        for i in range(self.size):
+            if self.embeddings[i] is not None:
+                dist = torch.norm(query_embedding - self.embeddings[i]).item()
+                if exclude_self and dist < 1e-6:
+                    continue
+                distances.append(dist)
+                valid_indices.append(i)
+                
+        if not distances:
+            return []
+            
+        k = min(k, len(distances))
+        indices = np.argsort(distances)[:k]
+        return [valid_indices[idx] for idx in indices]
+
+    def _compute_similarity_weights(self, query_embedding: Tensor, neighbor_indices: List[int]) -> Tensor:
+        """计算相似度权重"""
+        scores = []
+        for idx in neighbor_indices:
+            if self.embeddings[idx] is not None:
+                dist_squared = torch.norm(query_embedding - self.embeddings[idx])**2
+                scores.append(-dist_squared / self.ssl_tau)
+                
+        if not scores:
+            return torch.tensor([])
+            
+        return F.softmax(torch.tensor(scores), dim=0)
+
+    def _compute_consistency_loss(self, query_value: Tensor, neighbor_indices: List[int], weights: Tensor) -> float:
+        """计算一致性损失"""
+        total_loss = 0.0
+        for i, idx in enumerate(neighbor_indices):
+            if self.values[idx] is not None:
+                neighbor_value = self.values[idx]
+                mse = ((query_value - neighbor_value)**2).mean().item()
+                total_loss += weights[i].item() * mse
+        return total_loss
+
     def try_new_expr(self, expr: Expression, embedding: Optional[Tensor] = None) -> Tuple[float, float]:
         """
         尝试添加新表达式到池中

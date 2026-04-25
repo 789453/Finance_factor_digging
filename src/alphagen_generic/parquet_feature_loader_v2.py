@@ -50,6 +50,8 @@ class ParquetFeatureLoaderV2:
                  read_mode: str = "mixed",
                  cache_root: Optional[str] = None,
                  return_close_only: bool = False,
+                 datahub: Optional[Any] = None,
+                 **kwargs
                  ):
         """
         初始化ParquetFeatureLoaderV2
@@ -82,6 +84,7 @@ class ParquetFeatureLoaderV2:
             read_mode: 读取模式 (raw|filled|atomic|mixed)
             cache_root: 缓存根目录
             return_close_only: 是否只返回收盘价
+            datahub: DuckDBDataHub 实例 (用于高性能数据读取)
         """
         self.domain = domain
         self.start_time = str(start_time).replace("-", "")
@@ -100,6 +103,7 @@ class ParquetFeatureLoaderV2:
         self.read_mode = read_mode
         self.cache_root = cache_root
         self.return_close_only = return_close_only
+        self.datahub = datahub
         
         # 优先从 dataset_meta 获取配置
         if dataset_meta is not None:
@@ -178,29 +182,30 @@ class ParquetFeatureLoaderV2:
     def _setup_file_maps(self, 
                         feature_file_map_raw: Optional[Dict[str, str]], 
                         feature_file_map_filled: Optional[Dict[str, str]]) -> None:
-        """设置文件映射"""
-        self.feature_file_map_filled = feature_file_map_filled or {
-            'A': 'feature_A_filled.parquet',
-            'B': 'feature_B_filled.parquet', 
-            'C': 'feature_C_filled.parquet',
-            'E': 'feature_E_filled.parquet'
-        }
-        self.feature_file_map_raw = feature_file_map_raw or {
-            'A': 'feature_A_price_volume.parquet',
-            'B': 'feature_B_moneyflow.parquet',
-            'C': 'feature_C_chip.parquet',
-            'E': 'feature_E_intraday_summary.parquet'
-        }
+        """设置文件映射，移除硬编码"""
+        self.feature_file_map_raw = feature_file_map_raw or {}
+        self.feature_file_map_filled = feature_file_map_filled or {}
     
     def _load_sample_pool(self, pool_path: Optional[str]) -> Optional[Union[List, Dict]]:
         """加载样本池"""
-        if pool_path and os.path.exists(pool_path):
-            with open(pool_path, 'r') as f:
-                import json
-                return json.load(f)
-        else:
-            logger.warning("No sample pool provided. Using all stocks from data.")
+        if not pool_path:
             return None
+            
+        full_path = Path(pool_path)
+        if not full_path.is_absolute():
+            full_path = Path(self.data_dir) / pool_path
+            
+        if full_path.exists():
+            if full_path.suffix == '.json':
+                with open(full_path, 'r') as f:
+                    return json.load(f)
+            elif full_path.suffix == '.parquet':
+                # 支持从 parquet 加载样本池
+                df = pd.read_parquet(full_path)
+                return df.to_dict('list') # 简单处理
+        
+        logger.warning(f"Sample pool not found at {full_path}. Using all stocks from data.")
+        return None
     
     def _get_features(self) -> List[str]:
         """获取特征列表"""
@@ -338,36 +343,109 @@ class ParquetFeatureLoaderV2:
             return self._build_from_filled_layer()
         elif self.read_mode == "atomic":
             return self._build_from_atomic_layer()
+        elif self.read_mode == "prefer_filled":
+            return self._build_prefer_filled_view()
+        elif self.read_mode == "stack":
+            return self._build_stacked_view()
         elif self.read_mode == "mixed":
             return self._build_mixed_view()
         else:
             raise ValueError(f"Unsupported read_mode: {self.read_mode}")
+
+    def _build_prefer_filled_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
+        """构建优先填充视图: filled > raw，同时保留 atomic"""
+        input_files = self._resolve_input_files()
+        
+        # 加载基础数据 (filled 或 raw)
+        base_path = input_files.get("filled") or input_files.get("raw")
+        if not base_path:
+            raise FileNotFoundError(f"No base data (filled/raw) found for domain {self.domain}")
+            
+        # 暂时只支持从单个主文件加载，atomic 字段可以通过 feature_names 机制在 _build_feature_tensors 中处理
+        # 或者后续扩展为多文件 merge。目前按指导先实现单文件加载。
+        return self._load_parquet_data(base_path)
+
+    def _build_stacked_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
+        """构建堆叠视图: 从多个 layer 提取 feature_names"""
+        # 这是一个更复杂的实现，需要 merge 多个 parquet。
+        # 简化版：如果 feature_names 都在一个文件中，直接读；否则报错。
+        return self._build_prefer_filled_view() # 暂时使用 prefer_filled
     
     def _resolve_input_files(self) -> Dict[str, str]:
-        """解析输入文件"""
+        """
+        解析输入文件路径
+        
+        Returns:
+            Dict[str, str]: 层名称到文件路径的映射
+        """
         input_files = {}
+        data_root = Path(self.data_dir) if self.data_dir else Path(".")
         
-        # 从dataset_meta获取文件路径
-        if self.dataset_meta:
-            paths = self.dataset_meta.resolve_parquet_paths()
-            for layer, path in paths.items():
-                if layer in self.layers and os.path.exists(path):
-                    input_files[layer] = path
-        
-        # 从CLI参数获取文件路径
-        if "raw" in self.layers and self.domain in self.feature_file_map_raw:
-            raw_path = os.path.join(self.data_dir, self.feature_file_map_raw[self.domain])
-            if os.path.exists(raw_path):
-                input_files["raw"] = raw_path
-        
-        if "filled" in self.layers and self.domain in self.feature_file_map_filled:
-            filled_dir = os.path.join(os.path.dirname(self.data_dir), "factor_ready_filled")
-            filled_path = os.path.join(filled_dir, self.feature_file_map_filled[self.domain])
-            if os.path.exists(filled_path):
-                input_files["filled"] = filled_path
-        
-        if "atomic" in self.layers and self.atomic_path and os.path.exists(self.atomic_path):
-            input_files["atomic"] = self.atomic_path
+        # 1. 如果有 dataset_meta，优先使用其配置
+        if self.dataset_meta is not None:
+            meta_files = self.dataset_meta.raw.get("files", {})
+            for layer in ("raw", "filled", "atomic"):
+                if layer in meta_files:
+                    layer_info = meta_files[layer]
+                    rel_path = None
+                    
+                    if isinstance(layer_info, dict):
+                        rel_path = layer_info.get(self.domain)
+                    elif isinstance(layer_info, str):
+                        rel_path = layer_info
+                    
+                    if rel_path:
+                        # 检查是否为 DuckDB 表名
+                        if self.datahub and rel_path in self.datahub.list_tables():
+                            input_files[layer] = rel_path
+                            logger.info(f"Resolved layer {layer} to DuckDB table: {rel_path}")
+                            continue
+                            
+                        # 否则视为文件路径
+                        path = Path(rel_path)
+                        if not path.is_absolute():
+                            path = data_root / path
+                        
+                        if path.exists() or (not path.suffix and (path.parent / (path.name + ".parquet")).exists()):
+                            input_files[layer] = str(path)
+                            logger.info(f"Resolved layer {layer} to file: {path}")
+
+        # 2. 显式构造函数参数覆盖
+        if self.feature_file_map_raw and self.domain in self.feature_file_map_raw:
+            input_files["raw"] = self.feature_file_map_raw[self.domain]
+            
+        if self.feature_file_map_filled and self.domain in self.feature_file_map_filled:
+            input_files["filled"] = self.feature_file_map_filled[self.domain]
+            
+        if self.atomic_path:
+            path = Path(self.atomic_path)
+            if not path.is_absolute():
+                path = data_root / path
+            if path.exists():
+                input_files["atomic"] = str(path)
+
+        # 3. 最后的 Legacy Fallback (如果仍然为空)
+        if not input_files:
+            legacy_maps = {
+                'raw': {
+                    'A': 'feature_A_price_volume.parquet',
+                    'B': 'feature_B_moneyflow.parquet',
+                    'C': 'feature_C_chip.parquet',
+                    'E': 'feature_E_intraday_summary.parquet'
+                },
+                'filled': {
+                    'A': 'feature_A_filled.parquet',
+                    'B': 'feature_B_filled.parquet', 
+                    'C': 'feature_C_filled.parquet',
+                    'E': 'feature_E_filled.parquet'
+                }
+            }
+            for layer in ("filled", "raw"):
+                if layer in self.layers and self.domain in legacy_maps[layer]:
+                    path = data_root / legacy_maps[layer][self.domain]
+                    if path.exists():
+                        input_files[layer] = str(path)
+                        break
         
         return input_files
     
@@ -413,11 +491,31 @@ class ParquetFeatureLoaderV2:
         """加载parquet数据"""
         logger.info(f"Loading data from {parquet_path}")
         
-        if not os.path.exists(parquet_path):
-            raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
+        is_duckdb_table = False
+        if self.datahub:
+            # 检查是否为 DuckDB 中的表
+            tables = self.datahub.list_tables()
+            if parquet_path in tables:
+                is_duckdb_table = True
+                logger.info(f"Detected DuckDB table: {parquet_path}")
+
+        if not is_duckdb_table and not os.path.exists(parquet_path):
+            # 尝试补全后缀
+            if not parquet_path.endswith(".parquet"):
+                alt_path = parquet_path + ".parquet"
+                if os.path.exists(alt_path):
+                    parquet_path = alt_path
+                else:
+                    raise FileNotFoundError(f"Parquet file or DuckDB table not found: {parquet_path}")
+            else:
+                raise FileNotFoundError(f"Parquet file or DuckDB table not found: {parquet_path}")
         
         # 读取所有日期以确定范围
-        df_dates = pd.read_parquet(parquet_path, columns=[self.date_column])
+        if is_duckdb_table:
+            df_dates = self.datahub.execute_sql(f"SELECT {self.date_column} FROM {parquet_path}").to_pandas()
+        else:
+            df_dates = pd.read_parquet(parquet_path, columns=[self.date_column])
+            
         all_dates = df_dates[self.date_column].unique()
         all_dates.sort()
         all_dates_str = all_dates.astype(str)
@@ -425,12 +523,16 @@ class ParquetFeatureLoaderV2:
         # 找到索引
         try:
             start_idx = next(i for i, d in enumerate(all_dates_str) if d >= self.start_time)
-            end_idx = next(i for i, d in enumerate(all_dates_str) if d > self.end_time) - 1
+            # 处理 end_time 之后没有数据的情况
+            try:
+                end_idx = next(i for i, d in enumerate(all_dates_str) if d > self.end_time) - 1
+            except StopIteration:
+                end_idx = len(all_dates_str) - 1
         except StopIteration:
             raise ValueError(f"Date range {self.start_time}-{self.end_time} not covered by data")
         
         if end_idx < start_idx:
-            raise ValueError("end_time before start_time")
+            raise ValueError(f"end_time {self.end_time} before start_time {self.start_time}")
         
         # 扩展范围
         real_start_idx = max(0, start_idx - self.max_backtrack_days)
@@ -445,7 +547,11 @@ class ParquetFeatureLoaderV2:
         self._dates = pd.Index(all_dates[real_start_idx:real_end_idx])
         
         # 获取可用列
-        available_columns = self._available_columns(parquet_path)
+        if is_duckdb_table:
+            available_columns = self.datahub.execute_sql(f"DESCRIBE {parquet_path}").to_pandas()["column_name"].tolist()
+        else:
+            available_columns = self._available_columns(parquet_path)
+            
         resolved_feature_columns = self._resolve_feature_columns(available_columns)
         
         # 构建所需列
@@ -457,8 +563,24 @@ class ParquetFeatureLoaderV2:
             required_columns = [self.date_column, self.code_column, self.close_column]
         
         # 读取数据
-        df = pd.read_parquet(parquet_path, columns=sorted(set(required_columns)))
-        df = df[(df[self.date_column] >= real_start_date) & (df[self.date_column] <= real_end_date)]
+        if is_duckdb_table:
+            sql = f"""
+                SELECT {', '.join(sorted(set(required_columns)))}
+                FROM {parquet_path}
+                WHERE {self.date_column} BETWEEN '{real_start_date}' AND '{real_end_date}'
+            """
+            df = self.datahub.execute_sql(sql).to_pandas()
+        elif self.datahub:
+            logger.info(f"Using DuckDBDataHub to scan parquet: {parquet_path}")
+            # 使用 DataHub 高效扫描 Parquet
+            df = self.datahub.execute_sql(f"""
+                SELECT {', '.join(sorted(set(required_columns)))}
+                FROM read_parquet('{parquet_path}')
+                WHERE {self.date_column} BETWEEN '{real_start_date}' AND '{real_end_date}'
+            """).to_pandas()
+        else:
+            df = pd.read_parquet(parquet_path, columns=sorted(set(required_columns)))
+            df = df[(df[self.date_column] >= real_start_date) & (df[self.date_column] <= real_end_date)]
         
         # 合并daily数据用于目标计算
         if self.daily_path and os.path.exists(self.daily_path) and not self.return_close_only:

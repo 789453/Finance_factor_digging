@@ -5,7 +5,10 @@ import math
 from torch_geometric.nn import global_mean_pool, RGCNConv
 from torch_geometric.data import Data, Batch
 
-from .config import *
+try:
+    from alpha_gfn.config import *
+except ImportError:
+    from .config import *
 from alphagen.data.tokens import *
 from alphagen.data.expression import *
 from alphagen.rl.env.wrapper import action2token

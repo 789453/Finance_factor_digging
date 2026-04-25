@@ -109,126 +109,25 @@ def build_family_search_space(family_spec: Dict[str, Any]) -> Tuple[List, List, 
     if errors:
         raise ValueError(f"Invalid family spec: {errors}")
     
-    # 导入操作符
-    operator_map = {}
-    
-    # 构建操作符映射
-    try:
-        from alphagen.data.expression import Ref, TsMean, TsStd, TsRank, TsDelta, TsCorr, TsCov
-        from alphagen.data.expression import Add, Sub, Mul, Div, Rank, Greater, Less, Pow
-        from alphagen.data.expression import Abs, Log, Sign, Max, Min, Sum, Mean, Std, Var
-        from alphagen.data.expression import Skew, Kurt, Quantile, Clip, DecayLinear, DecayExp, DecayLog
-        from alphagen.data.expression import IndNeutralize, GroupNeutralize, SectorNeutralize, RegBeta, RegRes
+    # 使用 alpha_gfn.search_space_v2 统一构建
+    from alpha_gfn.search_space_v2 import build_search_space
         
-        operator_map = {
-            'Ref': Ref,
-            'TsMean': TsMean,
-            'TsStd': TsStd,
-            'TsRank': TsRank,
-            'TsDelta': TsDelta,
-            'TsCorr': TsCorr,
-            'TsCov': TsCov,
-            'Add': Add,
-            'Sub': Sub,
-            'Mul': Mul,
-            'Div': Div,
-            'Rank': Rank,
-            'Greater': Greater,
-            'Less': Less,
-            'Pow': Pow,
-            'Abs': Abs,
-            'Log': Log,
-            'Sign': Sign,
-            'Max': Max,
-            'Min': Min,
-            'Sum': Sum,
-            'Mean': Mean,
-            'Std': Std,
-            'Var': Var,
-            'Skew': Skew,
-            'Kurt': Kurt,
-            'Quantile': Quantile,
-            'Clip': Clip,
-            'DecayLinear': DecayLinear,
-            'DecayExp': DecayExp,
-            'DecayLog': DecayLog,
-            'IndNeutralize': IndNeutralize,
-            'GroupNeutralize': GroupNeutralize,
-            'SectorNeutralize': SectorNeutralize,
-            'RegBeta': RegBeta,
-            'RegRes': RegRes,
-        }
-    except ImportError:
-        try:
-            from src.alphagen.data.expression import Ref, TsMean, TsStd, TsRank, TsDelta, TsCorr, TsCov
-            from src.alphagen.data.expression import Add, Sub, Mul, Div, Rank, Greater, Less, Pow
-            from src.alphagen.data.expression import Abs, Log, Sign, Max, Min, Sum, Mean, Std, Var
-            from src.alphagen.data.expression import Skew, Kurt, Quantile, Clip, DecayLinear, DecayExp, DecayLog
-            from src.alphagen.data.expression import IndNeutralize, GroupNeutralize, SectorNeutralize, RegBeta, RegRes
-            
-            operator_map = {
-                'Ref': Ref,
-                'TsMean': TsMean,
-                'TsStd': TsStd,
-                'TsRank': TsRank,
-                'TsDelta': TsDelta,
-                'TsCorr': TsCorr,
-                'TsCov': TsCov,
-                'Add': Add,
-                'Sub': Sub,
-                'Mul': Mul,
-                'Div': Div,
-                'Rank': Rank,
-                'Greater': Greater,
-                'Less': Less,
-                'Pow': Pow,
-                'Abs': Abs,
-                'Log': Log,
-                'Sign': Sign,
-                'Max': Max,
-                'Min': Min,
-                'Sum': Sum,
-                'Mean': Mean,
-                'Std': Std,
-                'Var': Var,
-                'Skew': Skew,
-                'Kurt': Kurt,
-                'Quantile': Quantile,
-                'Clip': Clip,
-                'DecayLinear': DecayLinear,
-                'DecayExp': DecayExp,
-                'DecayLog': DecayLog,
-                'IndNeutralize': IndNeutralize,
-                'GroupNeutralize': GroupNeutralize,
-                'SectorNeutralize': SectorNeutralize,
-                'RegBeta': RegBeta,
-                'RegRes': RegRes,
-            }
-        except ImportError:
-            logger.warning("Could not import expression operators, using empty operator map")
-            operator_map = {}
+    # 转换字段名以匹配 search_space_v2
+    # search_space_v2 期望 operator_names 字段
+    if 'operator_whitelist' in family_spec and 'operator_names' not in family_spec:
+        family_spec['operator_names'] = family_spec['operator_whitelist']
+        
+    operators, delta_times, constants = build_search_space(family_spec=family_spec)
     
-    # 获取操作符白名单和禁用列表
-    operator_whitelist = family_spec.get('operator_whitelist', list(operator_map.keys()))
+    # 二次过滤 (如果 family_spec 有额外要求)
     forbid_operators = family_spec.get('forbid_operators', [])
+    if forbid_operators:
+        operators = [op for op in operators if (getattr(op, "__name__", op.__class__.__name__)) not in forbid_operators]
+        
+    logger.info(f"Built search space for family {family_spec.get('family_id', 'unknown')}: "
+                f"{len(operators)} operators, {len(delta_times)} delta_times, {len(constants)} constants")
     
-    # 过滤操作符
-    all_operators = []
-    for op_name in operator_whitelist:
-        if op_name in operator_map:
-            if op_name not in forbid_operators:
-                all_operators.append(operator_map[op_name])
-        else:
-            logger.warning(f"Unknown operator: {op_name}")
-    
-    # 获取delta_times和constants
-    delta_times = family_spec.get('delta_times', [5, 10, 20, 40, 60])
-    constants = family_spec.get('constants', [0.5, 1.0, 2.0])
-    
-    logger.info(f"Built search space for family {family_spec['family_id']}: "
-                f"{len(all_operators)} operators, {len(delta_times)} delta_times, {len(constants)} constants")
-    
-    return all_operators, delta_times, constants
+    return operators, delta_times, constants
 
 def create_default_family_spec(family_id: str, domain: str = "A") -> Dict[str, Any]:
     """

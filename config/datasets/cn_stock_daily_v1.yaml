@@ -1,0 +1,41 @@
+dataset_id: cn.stock.daily.v1
+name: CN Stock Daily V1
+frequency: daily
+domain: A
+data_dir: D:/Trading/data_ever_26_3_14/data
+asset_type: equity
+market: a_share
+freq_group: eod
+
+columns:
+  date: trade_date
+  code: ts_code
+  open: open
+  high: high
+  low: low
+  close: close
+  volume: vol
+  amount: amount
+
+target:
+  price_column: close
+  expression: forward_return
+  label_days: 1
+
+files:
+  raw:
+    A: silver.fact_stock_daily
+    B: silver.fact_stock_moneyflow
+    C: silver.fact_stock_cyq_perf
+    E: silver.fact_stock_mins_60m
+  filled:
+    A: silver.fact_stock_daily
+    B: silver.fact_stock_moneyflow
+    C: silver.fact_stock_cyq_perf
+    E: silver.fact_stock_mins_60m
+
+layers_enabled: [raw, filled]
+
+date_range:
+  start: "20100101"
+  end: "20261231"

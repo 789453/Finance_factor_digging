@@ -1,0 +1,35 @@
+dataset_id: cn.index.daily.v1
+name: CN Index Daily V1
+frequency: daily
+domain: IDX
+data_dir: D:/Trading/data_ever_26_3_14/data
+asset_type: index
+market: index
+freq_group: eod
+
+columns:
+  date: trade_date
+  code: ts_code
+  open: open
+  high: high
+  low: low
+  close: close
+  volume: vol
+  amount: amount
+
+target:
+  price_column: close
+  expression: forward_return
+  label_days: 1
+
+files:
+  raw:
+    IDX: silver.fact_index_daily_selected
+  filled:
+    IDX: silver.fact_index_daily_selected
+
+layers_enabled: [raw, filled]
+
+date_range:
+  start: "20100101"
+  end: "20261231"

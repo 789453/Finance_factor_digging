@@ -19,12 +19,20 @@ class DataHubConfig:
     
     def __post_init__(self):
         """后处理"""
+        # 获取基础目录 (如果 warehouse_path 是文件，则获取其父目录的父目录，假设结构为 data/meta/warehouse.duckdb)
+        # 如果 warehouse_path 是目录，则直接使用
+        w_path = Path(self.warehouse_path)
+        if w_path.is_file() or w_path.suffix == '.duckdb':
+            base_dir = w_path.parent.parent
+        else:
+            base_dir = w_path
+            
         # 设置默认值
         if self.schema_metadata_path is None:
-            self.schema_metadata_path = os.path.join(self.warehouse_path, "meta", "schema_metadata.yaml")
+            self.schema_metadata_path = str(base_dir / "meta" / "schema_metadata.yaml")
         
         if self.integrity_summary_path is None:
-            self.integrity_summary_path = os.path.join(self.warehouse_path, "meta", "integrity_summary.json")
+            self.integrity_summary_path = str(base_dir / "meta" / "integrity_summary.json")
     
     def validate_paths(self):
         """验证路径是否存在"""

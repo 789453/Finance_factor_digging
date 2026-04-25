@@ -1,0 +1,50 @@
+# 通用价格-成交量时序核心因子族配置
+family_id: universal_pv_ts
+enabled_layers: [raw]
+allowed_domains: [A, B, C, E, FUT, OPT, IDX, FX]
+allowed_freq_groups: [eod]
+
+# 操作符白名单
+operator_whitelist:
+  - Ref
+  - TsMean
+  - TsStd
+  - TsRank
+  - TsDelta
+  - TsCorr
+  - TsCov
+  - Add
+  - Sub
+  - Mul
+  - Div
+  - Rank
+
+# 禁止的操作符
+forbid_operators: [Greater, Less, Pow]
+
+# 时间窗口参数
+delta_times: [5, 10, 20]
+
+# 常数参数
+constants: [0.5, 1.0, 2.0]
+
+# 表达式约束
+max_expr_length: 12
+min_ts_operator_count: 1
+
+# 训练参数
+n_episodes: 1000
+entropy_coef: 0.01
+entropy_temperature: 1.0
+ssl_weight: 1.0
+nov_weight: 0.3
+weight_decay_type: linear
+final_weight_ratio: 0.0
+
+# 数据过滤
+status_filter: [active, watch]
+
+# 评估参数
+label_days: 1
+max_backtrack_days: 20
+max_future_days: 5

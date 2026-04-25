@@ -1,6 +1,9 @@
 from typing import Any, Sequence
 
-from .config import CONSTANTS, DELTA_TIMES, OPERATORS
+try:
+    from alpha_gfn.config import CONSTANTS, DELTA_TIMES, OPERATORS
+except ImportError:
+    from .config import CONSTANTS, DELTA_TIMES, OPERATORS
 from alphagen_generic.task_config import parse_float_list, parse_int_list, parse_str_list
 
 

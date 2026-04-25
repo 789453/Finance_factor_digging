@@ -7,7 +7,10 @@ from torch import Tensor
 from alphagen.models.alpha_pool import AlphaPool
 from alphagen.data.expression import Expression
 from alphagen_generic.parquet_feature_loader import ParquetFeatureLoader
-from ..cache_manager import CacheManager, CacheKeyBuilder
+try:
+    from alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
+except ImportError:
+    from ..cache_manager import CacheManager, CacheKeyBuilder
 
 
 class AlphaPoolGFN(AlphaPool):

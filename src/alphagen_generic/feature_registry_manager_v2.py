@@ -140,6 +140,12 @@ class FeatureRegistryManagerV2:
         ]
         return pd.DataFrame(default_data)
     
+    def _status_key(self, domain: str, feature_name: str, layer: str) -> str:
+        """生成状态映射的统一键名"""
+        if layer == "raw" or layer == "filled":
+            return f"{domain}:{feature_name}"
+        return f"{domain}:{feature_name}:{layer}"
+
     def _initialize_status_maps(self):
         """初始化状态映射"""
         # 原始特征状态映射
@@ -147,7 +153,7 @@ class FeatureRegistryManagerV2:
             for _, row in self.raw_df.iterrows():
                 feature = row['feature_name']
                 domain = row['domain']
-                key = f"{domain}:{feature}"
+                key = self._status_key(domain, feature, "raw")
                 
                 # 默认状态：如果允许使用则为active
                 if row.get('allow_in_alphaprobe', 0) == 1:
@@ -160,7 +166,7 @@ class FeatureRegistryManagerV2:
             for _, row in self.atomic_df.iterrows():
                 feature = row['feature_name']
                 domain = row['domain']
-                key = f"{domain}:{feature}:atomic"
+                key = self._status_key(domain, feature, "atomic")
                 
                 if row.get('allow_in_alphaprobe', 0) == 1:
                     self.status_map[key] = 'active'
@@ -175,7 +181,7 @@ class FeatureRegistryManagerV2:
         获取指定域和层的特征列表
         
         Args:
-            domain: 域标识 (A, B, C, E)
+            domain: 域标识 (A, B, C, E, FUT, etc.)
             layer: 层类型 (raw, atomic)
             status_filter: 允许的状态列表
             
@@ -197,7 +203,7 @@ class FeatureRegistryManagerV2:
         # 过滤状态
         filtered_features = []
         for feature in domain_features:
-            key = f"{domain}:{feature}" if layer == "raw" else f"{domain}:{feature}:atomic"
+            key = self._status_key(domain, feature, layer)
             if self.status_map.get(key) in status_filter:
                 filtered_features.append(feature)
         
@@ -340,16 +346,17 @@ class FeatureRegistryManagerV2:
         
         return IntEnum('FeatureType', enum_dict)
     
-    def update_feature_status(self, feature_name: str, layer: str, status: str):
+    def update_feature_status(self, domain: str, feature_name: str, layer: str, status: str):
         """
         更新特征状态
         
         Args:
+            domain: 域标识
             feature_name: 特征名称
             layer: 层类型
             status: 新状态
         """
-        key = f"{feature_name}:{layer}"
+        key = self._status_key(domain, feature_name, layer)
         self.status_map[key] = status
         logger.info(f"更新特征状态: {key} -> {status}")
     
@@ -454,7 +461,7 @@ class FeatureRegistryManagerV2:
             issues.append(f"特征 {feature_name} 在 {layer} 层中不存在")
         
         # 检查特征状态
-        key = f"{domain}:{feature_name}" if layer == "raw" else f"{domain}:{feature_name}:atomic"
+        key = self._status_key(domain, feature_name, layer)
         if self.status_map.get(key) not in ['active', 'watch']:
             issues.append(f"特征 {feature_name} 状态为 {self.status_map.get(key)}")
         

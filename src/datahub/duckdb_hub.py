@@ -25,6 +25,9 @@ class DuckDBDataHub:
         # Initialize connection to DuckDB warehouse
         self.con = duckdb.connect(str(config.warehouse_path), read_only=True)
         
+        # Set search path to include silver schema
+        self.con.execute("SET search_path = 'main,silver'")
+        
         # Initialize metadata readers
         self.schema_reader = SchemaReader(config.schema_metadata_path)
         self.integrity_reader = IntegrityReader(config.integrity_summary_path)
@@ -214,15 +217,21 @@ class DuckDBDataHub:
             raise RuntimeError(f"Failed to get table info for {table_name}: {str(e)}")
     
     def list_tables(self) -> List[str]:
-        """List all tables in the warehouse."""
+        """List all tables in the warehouse, including schema-qualified names."""
         result = self.con.execute("""
-            SELECT table_name
+            SELECT table_schema, table_name
             FROM information_schema.tables
             WHERE table_type = 'BASE TABLE'
-            ORDER BY table_name
+            ORDER BY table_schema, table_name
         """)
         
-        return [row[0] for row in result.fetchall()]
+        tables = []
+        for schema, name in result.fetchall():
+            if schema in ('main', 'silver'):
+                tables.append(name)  # 允许简写
+            tables.append(f"{schema}.{name}")
+            
+        return tables
     
     def get_sample_data(self, table: str, limit: int = 10) -> pa.Table:
         """Get sample data from a table."""
@@ -236,4 +245,4 @@ class DuckDBDataHub:
         else:
             result = self.con.execute(sql)
         
-        return result.arrow()
+        return result.fetch_arrow_table()

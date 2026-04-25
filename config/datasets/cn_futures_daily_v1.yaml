@@ -1,0 +1,38 @@
+dataset_id: cn.futures.daily.v1
+name: CN Futures Daily V1
+frequency: daily
+domain: FUT
+data_dir: D:/Trading/data_ever_26_3_14/data
+asset_type: futures
+market: futures
+freq_group: eod
+
+columns:
+  date: trade_date
+  code: ts_code
+  open: open
+  high: high
+  low: low
+  close: close
+  settle: settle
+  volume: vol
+  amount: amount
+  open_interest: oi
+
+target:
+  price_column: close
+  fallback_price_columns: [settle]
+  expression: forward_return
+  label_days: 1
+
+files:
+  raw:
+    FUT: silver.fact_cffex_fut_daily_selected
+  filled:
+    FUT: silver.fact_cffex_fut_daily_selected
+
+layers_enabled: [raw, filled]
+
+date_range:
+  start: "20150101"
+  end: "20261231"

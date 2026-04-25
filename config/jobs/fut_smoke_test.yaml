@@ -1,0 +1,24 @@
+job_id: fut_smoke_test
+name: Futures Smoke Test
+dataset_id: cn.futures.daily.v1
+family_id: universal_pv_ts
+segment_name: smoke
+
+train_start: "20260101"
+train_end: "20260228"
+test_start: "20260301"
+test_end: "20260331"
+
+n_episodes: 5
+pool_capacity: 5
+batch_size: 2
+log_freq: 1
+
+status_filter: [active, watch]
+max_backtrack_days: 20
+max_future_days: 5
+use_filled: true
+read_mode: prefer_filled
+cache_root: data/cache/smoke
+output_dir: data/mining_logs/smoke
+cuda: -1

@@ -1,4 +1,10 @@
 import torch
+"""
+Legacy GFN training entry.
+
+Do not add new dataset / family / multi-asset logic here.
+Use mining.mine_factors with job_spec + dataset_meta for new workflows.
+"""
 import random
 import numpy as np
 import argparse
