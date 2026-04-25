@@ -13,13 +13,14 @@ import warnings
 from datetime import datetime
 from factor_io.specs import (
     MiningExperimentSpec, DatasetSpec, UniverseSpec, TargetSpec,
-    ExperimentSplit, SearchSpaceSpec, EngineSpec, EvaluationSpec, OutputSpec
+    ExperimentSplit, SearchSpaceSpec, EngineSpec, EvaluationSpec, OutputSpec,
+    ScreeningSpec
 )
 
 logger = logging.getLogger(__name__)
 
 def load_experiment_spec(path: str) -> MiningExperimentSpec:
-    """Load mining experiment specification from YAML or JSON"""
+    """Load mining experiment specification from YAML or JSON with legacy support."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Experiment spec file not found: {path}")
     
@@ -34,30 +35,110 @@ def load_experiment_spec(path: str) -> MiningExperimentSpec:
         raise ValueError(f"Unsupported format: {ext}")
 
     # Build spec objects from dict
-    # This is a simplified mapper, real implementation should handle nested dicts properly
-    job_data = data.get("job", {})
-    dataset_data = data.get("data", {})
+    # Support both new nested format and old flattened format
+    
+    # 1. Dataset & Universe
+    dataset_data = data.get("dataset", data.get("data", {}))
+    if not dataset_data:
+        # Legacy fallback
+        dataset_data = {
+            "dataset_id": data.get("dataset_id", "unknown"),
+            "name": data.get("dataset_id", "unknown"),
+            "domain": data.get("domain", "A"),
+            "frequency": data.get("frequency", "daily"),
+            "date_column": data.get("date_column", "trade_date"),
+            "asset_column": data.get("asset_column", "ts_code"),
+            "columns": data.get("columns", {}),
+            "layers_enabled": data.get("layers", ["raw"])
+        }
+    else:
+        # Fill missing required fields for DatasetSpec
+        dataset_data.setdefault("name", dataset_data.get("dataset_id", "unknown"))
+        dataset_data.setdefault("domain", "A")
+        dataset_data.setdefault("frequency", "daily")
+        dataset_data.setdefault("date_column", "trade_date")
+        dataset_data.setdefault("asset_column", "ts_code")
+        dataset_data.setdefault("columns", {})
+        dataset_data.setdefault("layers_enabled", ["raw"])
+    
     universe_data = data.get("universe", {})
+    if not universe_data:
+        # Legacy fallback
+        universe_data = {
+            "universe_id": data.get("universe_id", "all"),
+            "domain": data.get("domain", "A"),
+            "status_filter": data.get("status_filter", ["active", "watch"])
+        }
+    else:
+        universe_data.setdefault("universe_id", "all")
+        universe_data.setdefault("domain", "A")
+        universe_data.setdefault("status_filter", ["active", "watch"])
+
+    # 2. Target
     target_data = data.get("target", {})
-    split_data = data.get("split", data.get("data", {}).get("splits", {}))
+    if not target_data:
+        # Legacy fallback
+        target_data = {
+            "target_id": data.get("target_id", "fwd_ret"),
+            "price_column": data.get("price_column", "close"),
+            "horizon": data.get("label_days", 5)
+        }
+
+    # 3. Split
+    split_data = data.get("split", {})
+    if not split_data:
+        # Legacy fallback
+        split_data = {
+            "train": (data.get("train_start"), data.get("train_end")),
+            "test": (data.get("test_start"), data.get("test_end"))
+        }
+
+    # 4. Search Space
     search_data = data.get("search_space", {})
+    if not search_data:
+        # Legacy fallback
+        search_data = {
+            "family_id": data.get("family_id", "unknown"),
+            "max_expr_length": data.get("max_expr_length", 20)
+        }
+
+    # 5. Engine
     engine_data = data.get("engine", {})
-    eval_data = data.get("evaluation", {})
-    output_data = data.get("output", {})
+    if not engine_data:
+        # Legacy fallback (infer from fields)
+        engine_type = "gfn" if "n_episodes" in data else "random"
+        engine_params = {
+            "n_episodes": data.get("n_episodes", 1000),
+            "batch_size": data.get("batch_size", 32),
+            "learning_rate": data.get("learning_rate", 1e-4),
+            "pool_capacity": data.get("pool_capacity", 50)
+        }
+        engine_data = {"type": engine_type, "params": engine_params}
+
+    # 6. Screening
+    screening_data = data.get("screening", {})
+    if not screening_data:
+        # Legacy fallback
+        screening_data = {
+            "min_train_abs_ic": data.get("ic_threshold", 0.01),
+            "min_valid_abs_ic": data.get("min_valid_ic", 0.005),
+            "min_complexity": data.get("min_complexity", 6)
+        }
 
     spec = MiningExperimentSpec(
-        job_id=job_data.get("job_id", data.get("job_id", "unknown")),
-        name=job_data.get("name", data.get("name", "unknown")),
-        seed=job_data.get("seed", data.get("seed", 42)),
-        output_dir=job_data.get("output_dir", data.get("output_dir", "runs")),
-        dataset=DatasetSpec(**dataset_data) if dataset_data else None,
-        universe=UniverseSpec(**universe_data) if universe_data else None,
-        target=TargetSpec(**target_data) if target_data else None,
-        split=ExperimentSplit(**split_data) if split_data else None,
-        search_space=SearchSpaceSpec(**search_data) if search_data else None,
-        engine=EngineSpec(**engine_data) if engine_data else None,
-        evaluation=EvaluationSpec(**eval_data) if eval_data else None,
-        output=OutputSpec(**output_data) if output_data else None
+        job_id=data.get("job_id", "unknown"),
+        name=data.get("name", "unknown"),
+        seed=data.get("seed", 42),
+        output_dir=data.get("output_dir", "runs"),
+        dataset=DatasetSpec(**dataset_data),
+        universe=UniverseSpec(**universe_data),
+        target=TargetSpec(**target_data),
+        split=ExperimentSplit(**split_data),
+        search_space=SearchSpaceSpec(**search_data),
+        engine=EngineSpec(**engine_data),
+        evaluation=EvaluationSpec(**data.get("evaluation", {})),
+        screening=ScreeningSpec(**screening_data),
+        output=OutputSpec(**data.get("output", {}))
     )
     return spec
 

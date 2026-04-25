@@ -41,9 +41,9 @@ class AtomicRegistry:
         """Get all atomic fields with specific frequency."""
         return [field for field in self.fields.values() if field.frequency.value == frequency]
     
-    def list_all_fields(self) -> List[str]:
-        """List all registered field names."""
-        return list(self.fields.keys())
+    def get_all_fields(self) -> List[AtomicFieldSpec]:
+        """Get all registered field specifications."""
+        return list(self.fields.values())
     
     def list_domains(self) -> List[AtomicDomain]:
         """List all available domains."""

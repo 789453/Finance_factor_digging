@@ -1,0 +1,44 @@
+job_id: manual_factor_test
+name: Manual Factor Platform Test
+seed: 42
+output_dir: runs/manual_test
+
+dataset:
+  dataset_id: cn_stock_moneyflow_daily_v1
+  layers_enabled: [raw, atomic]
+
+target:
+  target_id: fwd_ret_5
+  price_column: close
+  horizon: 5
+
+split:
+  train: ["2023-01-01", "2023-12-31"]
+  valid: ["2024-01-01", "2024-03-31"]
+  test: ["2024-04-01", "2024-06-30"]
+
+search_space:
+  family_id: moneyflow_ts_complex
+  max_expr_length: 30
+
+engine:
+  type: manual
+  params:
+    expressions:
+      # 1. Large order net ratio rank (Standard flow)
+      - "TsRank(Div(net_mf_amount, Add(Add(buy_lg_amount, sell_lg_amount), 0.001)), 20)"
+      # 2. Change in net moneyflow ratio (Atomic usage)
+      - "TsDelta(mf_net_ratio, 5)"
+      # 3. Correlation between pressure and acceleration (Atomic correlation)
+      - "TsCorr(mf_pressure, mf_acceleration, 10)"
+      # 4. Extraordinary large order imbalance deviation
+      - "Sub(mf_imbalance_elg, TsMean(mf_imbalance_elg, 10))"
+      # 5. Semantic duplicate of #2 (to test novelty)
+      - "TsDelta(mf_net_ratio, 5.0)"
+
+screening:
+  min_train_abs_ic: 0.001
+  min_valid_abs_ic: 0.0005
+  max_pool_corr: 0.95
+  use_semantic_novelty: true
+  max_semantic_sim: 0.98

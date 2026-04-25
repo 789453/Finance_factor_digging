@@ -47,12 +47,12 @@ constants: [0.5, 1.0, 2.0, 3.0]
 
 constraints:
   max_expr_length: 24
-  min_expr_length: 6
-  min_complexity: 6
+  min_expr_length: 4
+  min_complexity: 4
   min_depth: 3
-  min_operators: 3
-  min_ts_operator_count: 2
-  min_feature_count: 2
+  min_operators: 2
+  min_ts_operator_count: 1
+  min_feature_count: 1
   min_feature_coverage: 0.65
   reject_constant_only: true
   reject_raw_feature_only: true

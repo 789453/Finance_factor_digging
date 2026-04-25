@@ -69,14 +69,45 @@ class OutputSpec:
 @dataclass
 class ScreeningSpec:
     """因子筛选条件，支持按区域/Domain定制"""
-    min_ic: float = 0.02
-    min_rank_ic: float = 0.02
-    min_icir: float = 0.5
-    min_stability: float = 0.1
-    max_nan_ratio: float = 0.3
-    min_coverage: float = 0.7
-    max_complexity: int = 10
-    max_depth: int = 5
+    # syntax / expression
+    min_complexity: int = 6
+    max_complexity: int = 45
+    min_depth: int = 3
+    max_depth: int = 12
+    min_operators: int = 3
+    min_ts_operators: int = 1
+    min_features: int = 1
+    reject_constant_only: bool = True
+    reject_raw_feature_only: bool = True
+    reject_identity: bool = True
+
+    # value quality
+    min_coverage: float = 0.65
+    max_nan_ratio: float = 0.35
+    max_inf_ratio: float = 0.01
+    max_zero_std_day_ratio: float = 0.20
+
+    # train/valid metrics
+    min_train_abs_ic: float = 0.005
+    min_valid_abs_ic: float = 0.003
+    min_valid_abs_rank_ic: float = 0.003
+    min_valid_icir: float = 0.02
+    min_valid_rank_icir: float = 0.02
+    min_sign_consistency: float = 0.52
+
+    # novelty / pool
+    max_pool_corr: float = 0.70
+    use_semantic_novelty: bool = False
+    max_semantic_sim: float = 0.92
+    embedding_model: str = "qwen3-embedding:0.6b"
+    max_canonical_duplicate: bool = True
+
+    # topk / stability
+    min_topk_ls_mean: float = 0.0
+    min_topk_ls_sharpe: float = 0.05
+    max_topk_turnover: float = 0.90
+    rolling_windows: List[int] = field(default_factory=lambda: [20, 60, 120])
+
     # 区域特定覆盖
     domain_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 

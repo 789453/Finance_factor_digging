@@ -352,43 +352,18 @@ def run_training_loop(ctx: MiningRuntimeContext) -> Dict[str, Any]:
 
 def mine_factors(job_spec_path: str, dataset_meta_path: Optional[str] = None, 
                 log_dir: Optional[str] = None, cuda_override: Optional[int] = None, **kwargs) -> Dict[str, Any]:
-    """Unified entry point for factor mining"""
-    job_spec, dataset_meta, family_spec = load_runtime_specs(job_spec_path, dataset_meta_path)
-    
-    if cuda_override is not None and cuda_override < 0:
-        device = torch.device('cpu')
-    else:
-        device = torch.device(f'cuda:{cuda_override}' if cuda_override is not None and torch.cuda.is_available() else 
-                             torch.device(f'cuda:{job_spec.raw.get("cuda", 0)}' if torch.cuda.is_available() and job_spec.raw.get("cuda", 0) >= 0 else 'cpu'))
-    
-    registry, datahub, train_loader, valid_loader, test_loader = build_data_context(job_spec, dataset_meta, device)
-    
-    target, features, operators, delta_times, constants, pool, quality_validator = build_alpha_context(
-        job_spec, dataset_meta, family_spec, registry, train_loader, valid_loader, test_loader
+    """
+    Unified entry point for factor mining.
+    Now wraps the new modular orchestrator.
+    """
+    from mining.orchestrator import run_experiment
+    return run_experiment(
+        job_spec_path=job_spec_path,
+        dataset_meta_path=dataset_meta_path,
+        log_dir=log_dir,
+        cuda_override=cuda_override,
+        **kwargs
     )
-    
-    # GFN Environment
-    env, gfn, sampler, optimizer = build_gfn_context(
-        job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device,
-        quality_validator=quality_validator
-    )
-    
-    if log_dir is None:
-        log_dir = os.path.join(job_spec.raw.get("output_dir", "runs"), f"{job_spec.job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    ctx = MiningRuntimeContext(
-        job_spec=job_spec, dataset_meta=dataset_meta, family_spec=family_spec,
-        registry=registry, datahub=datahub, train_loader=train_loader, test_loader=test_loader,
-        target=target, operators=operators, delta_times=delta_times, constants=constants,
-        pool=pool, env=env, gfn=gfn, sampler=sampler, optimizer=optimizer,
-        log_dir=log_dir, device=device
-    )
-    
-    # 初始化拒绝日志
-    ctx.pool._init_rejection_log(ctx.log_dir)
-    
-    return run_training_loop(ctx)
 
 if __name__ == "__main__":
     import argparse

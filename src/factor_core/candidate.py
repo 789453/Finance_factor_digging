@@ -16,6 +16,11 @@ class FactorCandidate:
     parent_ids: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Fields added for modular platform alignment
+    raw_expression: Optional[str] = None
+    canonical_expr: Optional[str] = None
+    source_run_id: Optional[str] = None
+
     def __post_init__(self):
         if not self.factor_id:
             # Generate a simple hash-based ID if not provided

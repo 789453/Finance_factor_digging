@@ -1,0 +1,6 @@
+run_id,factor_id,expression,canonical_expr,decision,rejection_reason,complexity,depth,n_features,n_operators,composite_score,created_at
+manual_factor_test_20260425_213507,manual_000,,,reject,syntax_error,0,0,0,0,0.0,2026-04-25T21:35:31.175114
+manual_factor_test_20260425_213507,manual_001,,,reject,syntax_error,0,0,0,0,0.0,2026-04-25T21:35:31.178627
+manual_factor_test_20260425_213507,manual_002,,,reject,syntax_error,0,0,0,0,0.0,2026-04-25T21:35:31.179627
+manual_factor_test_20260425_213507,manual_003,,,reject,syntax_error,0,0,0,0,0.0,2026-04-25T21:35:31.180131
+manual_factor_test_20260425_213507,manual_004,,,reject,syntax_error,0,0,0,0,0.0,2026-04-25T21:35:31.181135

@@ -79,40 +79,61 @@ class FeatureRegistryManagerV2:
         # 1. 尝试加载原始特征注册表
         if os.path.exists(self.raw_registry_path):
             try:
-                df = pd.read_csv(self.raw_registry_path)
-                # 处理列名差异
-                name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
-                for _, row in df.iterrows():
-                    spec = FeatureSpec(
-                        name=row[name_col],
-                        domain=row.get('domain', 'A'),
-                        layer='raw',
-                        category=row.get('category', 'unknown'),
-                        description=row.get('description', ''),
-                        status=row.get('status', 'active')
-                    )
-                    self.register_feature(spec)
-                logger.info(f"Loaded {len(df)} features from {self.raw_registry_path}")
+                # 尝试多种编码加载
+                df = None
+                for encoding in ['utf-8', 'gbk', 'utf-8-sig']:
+                    try:
+                        df = pd.read_csv(self.raw_registry_path, encoding=encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                
+                if df is not None:
+                    # 处理列名差异
+                    name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
+                    for _, row in df.iterrows():
+                        spec = FeatureSpec(
+                            name=row[name_col],
+                            domain=row.get('domain', 'A'),
+                            layer='raw',
+                            category=row.get('category', 'unknown'),
+                            description=row.get('description', ''),
+                            status=row.get('status', 'active')
+                        )
+                        self.register_feature(spec)
+                    logger.info(f"Loaded {len(df)} features from {self.raw_registry_path}")
+                else:
+                    logger.warning(f"Could not load registry {self.raw_registry_path} with any supported encoding.")
             except Exception as e:
                 logger.warning(f"Failed to load raw registry from {self.raw_registry_path}: {e}")
 
         # 2. 尝试加载原子特征注册表
         if os.path.exists(self.atomic_registry_path):
             try:
-                df = pd.read_csv(self.atomic_registry_path)
-                # 处理列名差异
-                name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
-                for _, row in df.iterrows():
-                    spec = FeatureSpec(
-                        name=row[name_col],
-                        domain=row.get('domain', 'A'),
-                        layer='atomic',
-                        category=row.get('category', 'momentum'),
-                        description=row.get('description', ''),
-                        status=row.get('status', 'active')
-                    )
-                    self.register_feature(spec)
-                logger.info(f"Loaded {len(df)} atomic features from {self.atomic_registry_path}")
+                df = None
+                for encoding in ['utf-8', 'gbk', 'utf-8-sig']:
+                    try:
+                        df = pd.read_csv(self.atomic_registry_path, encoding=encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                
+                if df is not None:
+                    # 处理列名差异
+                    name_col = 'feature_name' if 'feature_name' in df.columns else 'name'
+                    for _, row in df.iterrows():
+                        spec = FeatureSpec(
+                            name=row[name_col],
+                            domain=row.get('domain', 'A'),
+                            layer='atomic',
+                            category=row.get('category', 'momentum'),
+                            description=row.get('description', ''),
+                            status=row.get('status', 'active')
+                        )
+                        self.register_feature(spec)
+                    logger.info(f"Loaded {len(df)} atomic features from {self.atomic_registry_path}")
+                else:
+                    logger.warning(f"Could not load atomic registry {self.atomic_registry_path} with any supported encoding.")
             except Exception as e:
                 logger.warning(f"Failed to load atomic registry from {self.atomic_registry_path}: {e}")
 
@@ -137,6 +158,23 @@ class FeatureRegistryManagerV2:
                 enum_dict[upper_name] = idx
                 idx += 1
         return IntEnum('FeatureType', enum_dict)
+
+    def register_from_atomic_registry(self, atomic_registry: Any):
+        """Register features from an AtomicRegistry instance."""
+        for field in atomic_registry.get_all_fields():
+            spec = FeatureSpec(
+                name=field.name,
+                domain=field.domain.value,
+                layer="atomic",
+                category="atomic",
+                description=field.economic_meaning or f"Atomic field: {field.name}"
+            )
+            self.register_feature(spec)
+        logger.info(f"Registered {len(atomic_registry.get_all_fields())} atomic features from registry")
+
+    def get_feature_enum(self, domain: str, status_filter: List[str] = ['active'], layers: List[str] = None) -> IntEnum:
+        """Helper to get IntEnum for a specific domain, compatible with AlphaGen."""
+        return self.create_feature_enum(domain, status_filter, layers)
 
 # Legacy compatibility
 class FeatureRegistryManager(FeatureRegistryManagerV2):

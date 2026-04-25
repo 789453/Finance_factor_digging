@@ -18,5 +18,8 @@ class EngineRegistry:
             elif name == "random":
                 from factor_engines.random_engine import RandomExpressionEngine
                 return RandomExpressionEngine(**kwargs)
+            elif name == "manual":
+                from factor_engines.manual_engine import ManualEngine
+                return ManualEngine(**kwargs)
             raise ValueError(f"Unknown engine: {name}")
         return cls._engines[name](**kwargs)
