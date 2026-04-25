@@ -17,6 +17,7 @@ def build_search_space(
     delta_times: Any = None,
     constants: Any = None,
     family_spec: Optional[Dict[str, Any]] = None,
+    dataset_meta: Optional[Any] = None,
 ):
     """
     构建搜索空间
@@ -26,21 +27,22 @@ def build_search_space(
         delta_times: 时间窗口列表
         constants: 常数列表
         family_spec: 因子族配置（优先级最高）
+        dataset_meta: 数据集元数据对象 (DatasetMeta)
         
     Returns:
-        Tuple: (operator_list, delta_time_list, constant_list)
+        Tuple: (feature_list, operator_list, delta_time_list, constant_list)
     """
     # 如果提供了因子族配置，优先使用
     if family_spec:
-        return _build_search_space_from_family(family_spec)
+        return _build_search_space_from_family(family_spec, dataset_meta)
     
     # 否则使用传统参数
-    return _build_search_space_from_params(operator_names, delta_times, constants)
+    return _build_search_space_from_params(operator_names, delta_times, constants, dataset_meta)
 
-def _build_search_space_from_family(family_spec: Dict[str, Any]) -> tuple:
+def _build_search_space_from_family(family_spec: Dict[str, Any], dataset_meta: Optional[Any] = None) -> tuple:
     """从因子族配置构建搜索空间"""
     
-    # 操作符
+    # 1. 操作符
     operator_names = family_spec.get('operator_names', [])
     operator_list = []
     
@@ -59,11 +61,30 @@ def _build_search_space_from_family(family_spec: Dict[str, Any]) -> tuple:
         operator_list = [op for op in operator_list if op.__name__ not in forbid_operators]
         logger.info(f"过滤了 {len(forbid_operators)} 个禁止的操作符: {forbid_operators}")
     
-    # 时间窗口
+    # 2. 时间窗口
     delta_time_list = family_spec.get('delta_times', list(DELTA_TIMES))
     
-    # 常数
+    # 3. 常数
     constant_list = family_spec.get('constants', list(CONSTANTS))
+    
+    # 4. 特征 (Columns)
+    feature_list = []
+    feature_scopes = family_spec.get('feature_scopes', {})
+    if feature_scopes:
+        # 如果指定了 feature_scopes，合并所有层的特征
+        for layer, feats in feature_scopes.items():
+            if isinstance(feats, list):
+                feature_list.extend(feats)
+    
+    # 如果 feature_list 为空且提供了 dataset_meta，则从元数据中获取
+    if not feature_list and dataset_meta:
+        # 从 dataset_meta.columns 中获取，排除 date 和 code
+        all_cols = dataset_meta.columns
+        feature_list = [col for col in all_cols if col not in ['trade_date', 'ts_code', 'date', 'code']]
+        logger.info(f"从数据集元数据自动提取了 {len(feature_list)} 个特征")
+    
+    if not feature_list:
+        logger.warning("搜索空间中没有特征！这将导致 GFN 只能采样常数。")
     
     # 验证最小时间序列操作符数量
     min_ts_operator_count = family_spec.get('min_ts_operator_count', 1)
@@ -73,17 +94,17 @@ def _build_search_space_from_family(family_spec: Dict[str, Any]) -> tuple:
         logger.warning(f"时间序列操作符数量 {len(ts_operators)} 小于最小要求 {min_ts_operator_count}")
     
     logger.info(f"从因子族配置构建搜索空间:")
+    logger.info(f"  特征: {len(feature_list)} 个")
     logger.info(f"  操作符: {len(operator_list)} 个")
     logger.info(f"  时间窗口: {len(delta_time_list)} 个")
     logger.info(f"  常数: {len(constant_list)} 个")
-    logger.info(f"  最小时间序列操作符: {min_ts_operator_count}")
     
-    return operator_list, delta_time_list, constant_list
+    return feature_list, operator_list, delta_time_list, constant_list
 
-def _build_search_space_from_params(operator_names: Any, delta_times: Any, constants: Any) -> tuple:
+def _build_search_space_from_params(operator_names: Any, delta_times: Any, constants: Any, dataset_meta: Optional[Any] = None) -> tuple:
     """从参数构建搜索空间（向后兼容）"""
     
-    # 操作符
+    # 1. 操作符
     operator_list = OPERATORS
     if operator_names:
         parsed_names = parse_str_list(operator_names) or []
@@ -92,18 +113,25 @@ def _build_search_space_from_params(operator_names: Any, delta_times: Any, const
             raise ValueError(f"未知操作符在搜索空间中: {unknown}")
         operator_list = [DEFAULT_OPERATOR_MAP[name] for name in parsed_names]
     
-    # 时间窗口
+    # 2. 时间窗口
     delta_time_list = parse_int_list(delta_times) if delta_times is not None else list(DELTA_TIMES)
     
-    # 常数
+    # 3. 常数
     constant_list = parse_float_list(constants) if constants is not None else list(CONSTANTS)
     
+    # 4. 特征
+    feature_list = []
+    if dataset_meta:
+        all_cols = dataset_meta.columns
+        feature_list = [col for col in all_cols if col not in ['trade_date', 'ts_code', 'date', 'code']]
+    
     logger.info(f"从参数构建搜索空间:")
+    logger.info(f"  特征: {len(feature_list)} 个")
     logger.info(f"  操作符: {len(operator_list)} 个")
     logger.info(f"  时间窗口: {len(delta_time_list)} 个")
     logger.info(f"  常数: {len(constant_list)} 个")
     
-    return operator_list, delta_time_list, constant_list
+    return feature_list, operator_list, delta_time_list, constant_list
 
 def build_search_space_from_family_config(family_config_path: str, family_id: str) -> tuple:
     """

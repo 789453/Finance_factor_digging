@@ -1,0 +1,17 @@
+{
+  "job_id": "fut_smoke_test",
+  "dataset_id": "cn.futures.daily.v1",
+  "family_id": "universal_pv_ts",
+  "train_range": [
+    "20250901",
+    "20260228"
+  ],
+  "test_range": [
+    "20260301",
+    "20260331"
+  ],
+  "seed": 0,
+  "cuda": "cuda:0",
+  "status": "running",
+  "start_time": "2026-04-25T13:57:13.235720"
+}

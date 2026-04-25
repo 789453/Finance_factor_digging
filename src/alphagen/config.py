@@ -1,5 +1,5 @@
 from alphagen.data.expression import *
-from alphagen_qlib.stock_data import FeatureType
+from alphagen.data.stock_data import FeatureType
 
 MAX_EXPR_LENGTH = 20
 MAX_EPISODE_LENGTH = 256

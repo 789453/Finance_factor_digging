@@ -11,16 +11,8 @@ except ImportError:
     from .config import *
 from alphagen.data.tokens import *
 from alphagen.data.expression import *
-from alphagen.rl.env.wrapper import action2token
-
-def _build_graph_from_rpn(token_ids: list[int], token_embedding_layer: nn.Embedding, beg_token_id: int) -> Data:
+def _build_graph_from_rpn(tokens: list[Token], token_embedding_layer: nn.Embedding, beg_token_id: int, token_ids: list[int]) -> Data:
     device = token_embedding_layer.weight.device
-    tokens = []
-    for tid in token_ids:
-        if tid == beg_token_id:
-            tokens.append(BEG_TOKEN)
-        else:
-            tokens.append(action2token(tid))
     
     edges = []
     edge_types = []
@@ -68,7 +60,7 @@ def _build_graph_from_rpn(token_ids: list[int], token_embedding_layer: nn.Embedd
         edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
         edge_type = torch.tensor(edge_types, dtype=torch.long, device=device)
     
-    node_feature_ids = torch.tensor(token_ids, device=device)
+    node_feature_ids = torch.tensor(token_ids, device=device, dtype=torch.long)
     x = token_embedding_layer(node_feature_ids)
     
     return Data(x=x, edge_index=edge_index, edge_type=edge_type)
@@ -103,16 +95,39 @@ class GNNEncoder(nn.Module):
         
         return global_mean_pool(x, batch)
 
+class SimpleNeuralNet(nn.Module):
+    """简单的多层感知机网络，常用于 GFN 的 Policy Heads"""
+    def __init__(self, input_dim, output_dim, n_hidden_layers=0, hidden_dim=None):
+        super().__init__()
+        hidden_dim = hidden_dim or input_dim
+        layers = []
+
+        if n_hidden_layers <= 0:
+            layers.append(nn.Linear(input_dim, output_dim))
+        else:
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            for _ in range(n_hidden_layers - 1):
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                layers.append(nn.ReLU())
+            layers.append(nn.Linear(hidden_dim, output_dim))
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
 class SequenceEncoder(nn.Module):
-    def __init__(self, n_tokens: int, encoder_type: str = 'lstm'):
+    def __init__(self, n_tokens: int, encoder_type: str = 'lstm', tokens: list[Token] = None):
         super().__init__()
         self.encoder_type = encoder_type
         self.n_tokens = n_tokens
-        self.beg_token_id = 0
+        self.tokens = tokens
         
-        # Reserve one extra id for padding; use a valid non-negative padding index
-        self.padding_id = self.n_tokens + 1
-        self.token_embedding = nn.Embedding(self.n_tokens + 2, HIDDEN_DIM, padding_idx=self.padding_id)
+        # 使用 n_tokens 作为起始符 ID，n_tokens + 1 作为 padding ID
+        self.beg_token_id = n_tokens
+        self.padding_id = n_tokens + 1
+        self.token_embedding = nn.Embedding(n_tokens + 2, HIDDEN_DIM, padding_idx=self.padding_id)
         
         if encoder_type == 'transformer':
             self.pos_enc = PositionalEncoding(HIDDEN_DIM)
@@ -137,15 +152,31 @@ class SequenceEncoder(nn.Module):
         
     def forward(self, state_tokens: Tensor):
         bs = state_tokens.shape[0]
+        # Ensure state_tokens are long for embedding indexing
+        state_tokens = state_tokens.long()
 
         if self.encoder_type == 'gnn':
             data_list = []
             for i in range(bs):
-                token_ids = [tid for tid in state_tokens[i].tolist() if tid > -1]
+                # 始终包含起始符，确保图不为空
+                token_indices = [self.beg_token_id] + [int(tid) for tid in state_tokens[i].tolist() if tid > -1]
+                
+                tokens_for_graph = []
+                for tid in token_indices:
+                    if tid == self.beg_token_id:
+                        tokens_for_graph.append(BEG_TOKEN)
+                    else:
+                        if self.tokens is not None:
+                            tokens_for_graph.append(self.tokens[tid])
+                        else:
+                            # Fallback if tokens are not provided
+                            tokens_for_graph.append(Token()) 
+
                 graph_data = _build_graph_from_rpn(
-                    token_ids,
+                    tokens_for_graph,
                     self.token_embedding,
-                    self.beg_token_id
+                    self.beg_token_id,
+                    token_indices
                 )
                 data_list.append(graph_data)
             

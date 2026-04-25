@@ -76,14 +76,21 @@ class MiningJobSpec:
     
     def _infer_domain(self) -> str:
         """从dataset_id推断域"""
-        dataset_id = self.raw.get("dataset_id", "")
-        if ".a_share." in dataset_id:
+        dataset_id = self.raw.get("dataset_id", "").lower()
+        if "a_share" in dataset_id or "stock" in dataset_id:
             return "A"
-        elif "pv_daily" in dataset_id:
-            return "pv_daily"
-        elif "moneyflow" in dataset_id:
-            return "moneyflow"
+        elif "futures" in dataset_id or "fut" in dataset_id:
+            return "FUT"
+        elif "index" in dataset_id or "idx" in dataset_id:
+            return "IDX"
+        elif "fx" in dataset_id or "forex" in dataset_id:
+            return "FX"
+        elif "crypto" in dataset_id:
+            return "CRYPTO"
+        elif "macro" in dataset_id:
+            return "MACRO"
         return "A"
+
 
     def validate(self) -> List[str]:
         """验证作业规格"""

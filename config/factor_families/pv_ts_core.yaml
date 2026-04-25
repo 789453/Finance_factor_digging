@@ -1,10 +1,37 @@
-# 价格-成交量时序核心因子族配置
 family_id: pv_ts_core
-enabled_layers: [raw, atomic]
-allowed_domains: [A]
-allowed_freq_groups: [eod]
+name: Price Volume Time-Series Core
+description: 基于量价字段的时序搜索空间
 
-# 操作符白名单
+allowed_domains: [A, FUT, IDX, FX]
+allowed_freq_groups: [eod]
+enabled_layers: [raw, atomic]
+
+feature_scopes:
+  - domain: A
+    layers: [raw, atomic]
+    include:
+      - open
+      - high
+      - low
+      - close
+      - volume
+      - amount
+      - ret_1
+      - ret_5
+      - hl_range
+      - vwap_dev
+  - domain: FUT
+    layers: [raw, atomic]
+    include:
+      - open
+      - high
+      - low
+      - close
+      - settle
+      - volume
+      - open_interest
+      - oi_chg_1
+
 operator_whitelist:
   - Ref
   - TsMean
@@ -19,60 +46,17 @@ operator_whitelist:
   - Div
   - Rank
 
-# 禁止的操作符
-forbid_operators: [Greater, Less, Pow]
+forbid_operators:
+  - Pow
+  - Sin
+  - Cos
 
-# 时间窗口参数
-delta_times: [5, 10, 20, 40, 60]
+delta_times: [3, 5, 10, 20, 40, 60]
+constants: [0.5, 1.0, 2.0, 3.0]
 
-# 常数参数
-constants: [0.5, 1.0, 2.0]
-
-# 表达式约束
-max_expr_length: 18
-min_ts_operator_count: 1
-
-# 特征范围定义
-feature_scopes:
-  raw:
-    - open
-    - high
-    - low
-    - close
-    - vwap
-    - amount
-    - volume
-    - turnover
-  atomic:
-    - ret_5
-    - ret_10
-    - ret_20
-    - vwap_dev
-    - amount_z20
-    - volume_z20
-    - turnover_z20
-    - corr_close_volume_20
-    - corr_ret_amount_20
-    - hl_spread
-    - oc_gap
-
-# 采样和池配置
-sample_budget: 20000
-pool_capacity: 200
-
-# 训练参数
-n_episodes: 10000
-entropy_coef: 0.01
-entropy_temperature: 1.0
-ssl_weight: 1.0
-nov_weight: 0.3
-weight_decay_type: linear
-final_weight_ratio: 0.0
-
-# 数据过滤
-status_filter: [active, watch]
-
-# 评估参数
-label_days: 10
-max_backtrack_days: 100
-max_future_days: 30
+constraints:
+  max_expr_length: 20
+  max_ast_depth: 8
+  allow_cross_domain: false
+  allow_future_ref: false
+  min_feature_coverage: 0.65

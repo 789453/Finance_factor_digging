@@ -17,6 +17,7 @@ from alphagen.data.expression import (
     Abs,
     Add,
     Constant,
+    DeltaTime,
     Div,
     Expression,
     Feature,
@@ -145,6 +146,9 @@ class DimensionCalculator:
             return 1.0
 
         if isinstance(expr, Constant):
+            return 0.0
+
+        if isinstance(expr, DeltaTime):
             return 0.0
 
         if isinstance(expr, Abs):

@@ -3,89 +3,53 @@ import torch
 import numpy as np
 import os
 import pyarrow.parquet as pq
+import pyarrow as pa
 import hashlib
 import json
 import logging
-from typing import List, Optional, Union, Tuple, Dict, Any
+from typing import List, Optional, Union, Tuple, Dict, Any, Literal, Iterator, Set
+from dataclasses import dataclass
 from pathlib import Path
 from enum import IntEnum
 from tqdm import tqdm
-from .feature_registry_manager import FeatureRegistryManager
-from .sample_pool_builder import SamplePoolBuilder
+from .feature_registry_manager_v2 import FeatureRegistryManagerV2
 from .dataset_meta import DatasetMeta
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class LayerSource:
+    layer: Literal["raw", "filled", "atomic"]
+    source_type: Literal["duckdb_table", "parquet_file"]
+    name: str
+    date_col: str
+    code_col: str
+    available_columns: Set[str]
+
 class ParquetFeatureLoaderV2:
     """
-    升级版ParquetFeatureLoader，支持多层数据视图和缓存
-    支持raw/filled/atomic三层数据架构
+    升级版ParquetFeatureLoader，支持多层数据视图和缓存。
+    作为“数据视图构造器”，支持 raw/filled/atomic 三层架构。
+    默认使用 DuckDBDataHub 进行高性能数据读取。
     """
     
     def __init__(self,
                  domain: str,
                  start_time: str,
                  end_time: str,
-                 registry_manager: FeatureRegistryManager = None,
+                 registry_manager: FeatureRegistryManagerV2 = None,
                  dataset_meta: DatasetMeta = None,
-                 data_dir: str = None,
-                 daily_path: str = None,
-                 pool_path: str = None,
                  device: torch.device = torch.device('cuda:0'),
                  max_backtrack_days: int = 100,
                  max_future_days: int = 30,
                  status_filter: List[str] = ['active', 'watch'],
-                 use_filled: bool = True,
-                 feature_file_map_raw: Optional[Dict[str, str]] = None,
-                 feature_file_map_filled: Optional[Dict[str, str]] = None,
-                 atomic_path: Optional[str] = None,
-                 date_column: str = "trade_date",
-                 code_column: str = "ts_code",
-                 close_column: str = "close",
-                 dataset_id: Optional[str] = None,
-                 freq_group: str = "eod",
                  layers: List[str] = None,
-                 feature_names: Optional[List[str]] = None,
-                 segment_name: Optional[str] = None,
-                 read_mode: str = "mixed",
+                 read_mode: str = "stack",
                  cache_root: Optional[str] = None,
-                 return_close_only: bool = False,
                  datahub: Optional[Any] = None,
+                 segment_name: Optional[str] = None,
                  **kwargs
                  ):
-        """
-        初始化ParquetFeatureLoaderV2
-        
-        Args:
-            domain: 数据域
-            start_time: 开始时间
-            end_time: 结束时间
-            registry_manager: 特征注册管理器
-            dataset_meta: 数据集元数据
-            data_dir: 数据目录
-            daily_path: daily数据路径
-            pool_path: 样本池路径
-            device: 计算设备
-            max_backtrack_days: 最大回溯天数
-            max_future_days: 最大未来天数
-            status_filter: 状态过滤
-            use_filled: 是否使用填充数据
-            feature_file_map_raw: 原始特征文件映射
-            feature_file_map_filled: 填充特征文件映射
-            atomic_path: 原子特征路径
-            date_column: 日期列名
-            code_column: 代码列名
-            close_column: 收盘价列名
-            dataset_id: 数据集ID
-            freq_group: 频率组
-            layers: 启用的数据层
-            feature_names: 指定特征名列表
-            segment_name: 区段名称
-            read_mode: 读取模式 (raw|filled|atomic|mixed)
-            cache_root: 缓存根目录
-            return_close_only: 是否只返回收盘价
-            datahub: DuckDBDataHub 实例 (用于高性能数据读取)
-        """
         self.domain = domain
         self.start_time = str(start_time).replace("-", "")
         self.end_time = str(end_time).replace("-", "")
@@ -93,731 +57,403 @@ class ParquetFeatureLoaderV2:
         self.max_backtrack_days = max_backtrack_days
         self.max_future_days = max_future_days
         self.status_filter = status_filter
-        self.use_filled = use_filled
         self.dataset_meta = dataset_meta
-        self.dataset_id = dataset_id or f"{domain}.{freq_group}"
-        self.freq_group = freq_group
-        self.layers = layers or ["raw", "filled"]
-        self.feature_names = feature_names
-        self.segment_name = segment_name
+        self.layers = layers or ["raw", "atomic"]
         self.read_mode = read_mode
         self.cache_root = cache_root
-        self.return_close_only = return_close_only
         self.datahub = datahub
+        self.segment_name = segment_name
         
-        # 优先从 dataset_meta 获取配置
-        if dataset_meta is not None:
-            meta_kwargs = dataset_meta.to_loader_kwargs()
-            self._apply_meta_config(meta_kwargs)
-        
-        self.date_column = date_column
-        self.code_column = code_column
-        self.close_column = close_column
-
         # 初始化注册管理器
-        if registry_manager is None:
-            self.registry_manager = FeatureRegistryManager()
-        else:
-            self.registry_manager = registry_manager
+        self.registry_manager = registry_manager or FeatureRegistryManagerV2()
 
-        # 设置数据目录
-        self.data_dir = self._resolve_data_dir(data_dir)
-        self.daily_path = self._resolve_daily_path(daily_path)
-        self.atomic_path = atomic_path
-
-        # 设置文件映射
-        self._setup_file_maps(feature_file_map_raw, feature_file_map_filled)
+        # 解析层源
+        self.layer_sources = self._resolve_layer_sources()
         
-        # 加载样本池
-        self.sample_pool = self._load_sample_pool(pool_path)
+        # 构建特征计划
+        self.feature_plan = self._resolve_feature_plan()
         
-        # 获取特征列表
-        self.features = self._get_features()
-        
-        # 检查缓存或加载数据
+        # 加载数据 (优先从缓存)
         self.data, self._dates, self._stock_ids = self._load_or_cache_data()
-    
-    def _apply_meta_config(self, meta_kwargs: Dict[str, Any]) -> None:
-        """应用数据集元数据配置"""
-        if "data_dir" in meta_kwargs:
-            self.data_dir = meta_kwargs["data_dir"]
-        if "date_column" in meta_kwargs:
-            self.date_column = meta_kwargs["date_column"]
-        if "code_column" in meta_kwargs:
-            self.code_column = meta_kwargs["code_column"]
-        if "close_column" in meta_kwargs:
-            self.close_column = meta_kwargs["close_column"]
-        if "pool_path" in meta_kwargs:
-            self.pool_path = meta_kwargs["pool_path"]
-        if "feature_file_map_raw" in meta_kwargs:
-            self.feature_file_map_raw = meta_kwargs["feature_file_map_raw"]
-        if "feature_file_map_filled" in meta_kwargs:
-            self.feature_file_map_filled = meta_kwargs["feature_file_map_filled"]
-        if "atomic_path" in meta_kwargs:
-            self.atomic_path = meta_kwargs["atomic_path"]
-        if "dataset_id" in meta_kwargs:
-            self.dataset_id = meta_kwargs["dataset_id"]
-        if "freq_group" in meta_kwargs:
-            self.freq_group = meta_kwargs["freq_group"]
-        if "layers" in meta_kwargs:
-            self.layers = meta_kwargs["layers"]
-    
-    def _resolve_data_dir(self, data_dir: Optional[str]) -> str:
-        """解析数据目录"""
-        if data_dir is not None:
-            return data_dir
-        
-        # 默认路径
-        from utils.path_utils import FACTOR_READY_DIR
-        return FACTOR_READY_DIR
-    
-    def _resolve_daily_path(self, daily_path: Optional[str]) -> str:
-        """解析daily数据路径"""
-        if daily_path is not None:
-            return daily_path
-        
-        from utils.path_utils import map_path
-        return map_path(r"data/basic/daily.parquet")
-    
-    def _setup_file_maps(self, 
-                        feature_file_map_raw: Optional[Dict[str, str]], 
-                        feature_file_map_filled: Optional[Dict[str, str]]) -> None:
-        """设置文件映射，移除硬编码"""
-        self.feature_file_map_raw = feature_file_map_raw or {}
-        self.feature_file_map_filled = feature_file_map_filled or {}
-    
-    def _load_sample_pool(self, pool_path: Optional[str]) -> Optional[Union[List, Dict]]:
-        """加载样本池"""
-        if not pool_path:
-            return None
+
+    def _resolve_layer_sources(self) -> Dict[str, LayerSource]:
+        """解析每一层的数据源"""
+        sources = {}
+        if not self.dataset_meta:
+            return sources
             
-        full_path = Path(pool_path)
-        if not full_path.is_absolute():
-            full_path = Path(self.data_dir) / pool_path
+        meta_files = self.dataset_meta.raw.get("files", {})
+        cols_config = self.dataset_meta.raw.get("columns", {})
+        date_col = cols_config.get("date", "trade_date")
+        code_col = cols_config.get("code", "ts_code")
+        
+        for layer in ["raw", "filled", "atomic"]:
+            layer_info = meta_files.get(layer)
+            if not layer_info:
+                logger.debug(f"Layer {layer} not found in meta_files")
+                continue
             
-        if full_path.exists():
-            if full_path.suffix == '.json':
-                with open(full_path, 'r') as f:
-                    return json.load(f)
-            elif full_path.suffix == '.parquet':
-                # 支持从 parquet 加载样本池
-                df = pd.read_parquet(full_path)
-                return df.to_dict('list') # 简单处理
+            name = layer_info.get(self.domain) if isinstance(layer_info, dict) else layer_info
+            if not name:
+                logger.debug(f"No name found for domain {self.domain} in layer {layer}")
+                continue
+            
+            # 优先检查 DuckDB
+            if self.datahub:
+                try:
+                    tables = self.datahub.list_tables()
+                    logger.debug(f"Searching for {name} in DuckDB tables (total {len(tables)})")
+                    
+                    matched_table = None
+                    search_names = [name]
+                    if "." in name:
+                        # 尝试去掉前缀
+                        short_name = name.split(".")[-1]
+                        search_names.append(short_name)
+                    
+                    # 尝试大小写敏感和不敏感匹配
+                    for sn in search_names:
+                        # 精确匹配
+                        if sn in tables:
+                            matched_table = sn
+                            break
+                        # 大小写不敏感匹配
+                        for t in tables:
+                            if t.lower() == sn.lower():
+                                matched_table = t
+                                break
+                        if matched_table: break
+
+                    if matched_table:
+                        # 检查列
+                        try:
+                            # 处理带 Schema 的名称：要么不加引号，要么分开加
+                            if "." in matched_table:
+                                parts = matched_table.split(".")
+                                safe_name = ".".join([f'"{p}"' for p in parts])
+                            else:
+                                safe_name = f'"{matched_table}"'
+                                
+                            res = self.datahub.execute_sql(f"SELECT * FROM {safe_name} LIMIT 0")
+                            available_cols = set(res.column_names)
+                            sources[layer] = LayerSource(
+                                layer=layer, source_type="duckdb_table", name=matched_table,
+                                date_col=date_col, code_col=code_col, available_columns=available_cols
+                            )
+                            logger.info(f"Resolved layer {layer} from DuckDB table {matched_table}")
+                        except Exception as e:
+                            logger.warning(f"Failed to get columns for table {matched_table}: {e}")
+                    else:
+                        logger.debug(f"Table {name} not found in DuckDB tables")
+                except Exception as e:
+                    logger.warning(f"Error checking DuckDB tables: {e}")
+
+            if layer not in sources:
+                # 检查 Parquet 文件
+                # 尝试多个可能的位置
+                data_dir = Path(self.dataset_meta.raw.get("data_dir", "."))
+                potential_names = [name]
+                if "." in name: potential_names.append(name.split(".")[-1])
+                
+                path = None
+                for pn in potential_names:
+                    p = data_dir / pn
+                    if not p.suffix: p = p.with_suffix(".parquet")
+                    if p.exists():
+                        path = p
+                        break
+                
+                if path:
+                    try:
+                        available_cols = set(pq.ParquetFile(path).schema.names)
+                        sources[layer] = LayerSource(
+                            layer=layer, source_type="parquet_file", name=str(path),
+                            date_col=date_col, code_col=code_col, available_columns=available_cols
+                        )
+                        logger.info(f"Resolved layer {layer} from Parquet file {path}")
+                    except Exception as e:
+                        logger.warning(f"Error reading Parquet file {path}: {e}")
+                else:
+                    logger.debug(f"Parquet file for {name} does not exist in {data_dir}")
         
-        logger.warning(f"Sample pool not found at {full_path}. Using all stocks from data.")
-        return None
-    
-    def _get_features(self) -> List[str]:
-        """获取特征列表"""
-        if self.feature_names:
-            return self.feature_names
+        if not sources:
+            logger.error(f"Failed to resolve any layer sources for domain {self.domain}")
+        return sources
+
+
+    def _resolve_feature_plan(self) -> List[Tuple[str, str, str]]:
+        """
+        确定每个特征从哪个层、哪个列读取。
+        返回 [(feature_name, layer, source_column)]
+        """
+        plan = []
+        feature_enum = self.registry_manager.create_feature_enum(
+            self.domain, self.status_filter, self.layers
+        )
         
-        features = self.registry_manager.get_features_by_domain(self.domain, self.status_filter)
-        if not features:
-            raise ValueError(f"No active features found for domain {self.domain}")
-        return features
-    
-    def _get_cache_key(self) -> str:
-        """生成缓存键"""
-        # 构建缓存键的组成部分
-        key_parts = [
-            self.dataset_id,
-            self.domain,
-            self.freq_group,
-            self.start_time,
-            self.end_time,
-            str(self.max_backtrack_days),
-            str(self.max_future_days),
-            str(sorted(self.status_filter)),
-            str(sorted(self.layers)),
-            self.read_mode
-        ]
+        # 获取所有特征名
+        all_features = [m.name for m in feature_enum]
         
-        # 如果有样本池，加入哈希
-        if self.sample_pool:
-            if isinstance(self.sample_pool, list):
-                key_parts.append(str(len(self.sample_pool)))
-            elif isinstance(self.sample_pool, dict):
-                key_parts.append(str(hash(str(sorted(self.sample_pool.keys())))))
-        
-        # 如果有指定特征，加入特征哈希
-        if self.feature_names:
-            key_parts.append(str(hash(str(sorted(self.feature_names)))))
-        
-        # 生成最终哈希
-        key_str = "|".join(key_parts)
-        return hashlib.md5(key_str.encode()).hexdigest()
-    
-    def _get_cache_paths(self, cache_key: str) -> Dict[str, str]:
-        """获取缓存路径"""
-        if not self.cache_root:
-            return {}
-        
-        cache_dir = os.path.join(self.cache_root, "data_views", cache_key[:2], cache_key)
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        return {
-            "tensor": os.path.join(cache_dir, "tensor.pt"),
-            "dates": os.path.join(cache_dir, "dates.npy"),
-            "stocks": os.path.join(cache_dir, "stocks.npy"),
-            "feature_index": os.path.join(cache_dir, "feature_index.json"),
-            "view_manifest": os.path.join(cache_dir, "view_manifest.json")
-        }
-    
+        for feat in all_features:
+            found = False
+            # 根据 read_mode 决定搜索顺序
+            search_layers = []
+            if self.read_mode == "stack":
+                # stack 模式：显式匹配层
+                # 假设 feature 已经带了层信息，或者通过 registry 获取
+                feat_spec = self.registry_manager.get_feature_spec(feat) # 假设有这个方法
+                if feat_spec and feat_spec.layer in self.layer_sources:
+                    search_layers = [feat_spec.layer]
+                else:
+                    search_layers = self.layers
+            elif self.read_mode == "raw":
+                search_layers = ["raw"]
+            elif self.read_mode == "filled":
+                search_layers = ["filled"]
+            elif self.read_mode == "atomic":
+                search_layers = ["atomic"]
+            else: # legacy mixed
+                search_layers = ["filled", "raw", "atomic"]
+                
+            for layer in search_layers:
+                if layer not in self.layer_sources: continue
+                src = self.layer_sources[layer]
+                
+                # 匹配列名：优先使用 DatasetMeta 中的映射
+                actual_col = None
+                if self.dataset_meta:
+                    actual_col = self.dataset_meta.columns.get(feat.lower())
+                
+                candidates = []
+                if actual_col: candidates.append(actual_col)
+                candidates.extend([feat, feat.lower(), f"{feat}_robust", f"{feat}_raw"])
+                
+                for cand in candidates:
+                    if cand in src.available_columns:
+                        plan.append((feat, layer, cand))
+                        found = True
+                        break
+                if found: break
+            
+            if not found:
+                logger.warning(f"Feature {feat} not found in any enabled layers {self.layers}")
+                plan.append((feat, "none", "none"))
+                
+        return plan
+
     def _load_or_cache_data(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
         """加载或缓存数据"""
         cache_key = self._get_cache_key()
         cache_paths = self._get_cache_paths(cache_key)
         
-        # 尝试从缓存加载
         if cache_paths and self._is_cache_valid(cache_paths):
             logger.info(f"Loading data view from cache: {cache_key}")
             return self._load_from_cache(cache_paths)
         
-        # 重新构建数据
         logger.info(f"Building data view for cache key: {cache_key}")
         data, dates, stocks = self._build_data_view()
         
-        # 保存到缓存
         if cache_paths:
-            logger.info(f"Saving data view to cache: {cache_key}")
             self._save_to_cache(data, dates, stocks, cache_paths)
-        
+            
         return data, dates, stocks
-    
-    def _is_cache_valid(self, cache_paths: Dict[str, str]) -> bool:
-        """检查缓存是否有效"""
-        required_files = ["tensor", "dates", "stocks", "feature_index", "view_manifest"]
-        return all(os.path.exists(cache_paths[key]) for key in required_files)
-    
-    def _load_from_cache(self, cache_paths: Dict[str, str]) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """从缓存加载"""
-        data = torch.load(cache_paths["tensor"])
-        dates = pd.Index(np.load(cache_paths["dates"]))
-        stocks = pd.Index(np.load(cache_paths["stocks"]))
-        
-        # 验证设备
-        if str(data.device) != str(self.device):
-            data = data.to(self.device)
-        
-        return data, dates, stocks
-    
-    def _save_to_cache(self, data: torch.Tensor, dates: pd.Index, stocks: pd.Index, cache_paths: Dict[str, str]) -> None:
-        """保存到缓存"""
-        # 保存张量（移到CPU）
-        torch.save(data.cpu(), cache_paths["tensor"])
-        
-        # 保存索引
-        np.save(cache_paths["dates"], dates.values)
-        np.save(cache_paths["stocks"], stocks.values)
-        
-        # 保存特征索引
-        feature_index = {feature: i for i, feature in enumerate(self.features)}
-        with open(cache_paths["feature_index"], "w") as f:
-            json.dump(feature_index, f, indent=2)
-        
-        # 保存视图清单
-        manifest = {
-            "dataset_id": self.dataset_id,
-            "domain": self.domain,
-            "freq_group": self.freq_group,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "n_features": len(self.features),
-            "n_days": len(dates),
-            "n_stocks": len(stocks),
-            "layers": self.layers,
-            "read_mode": self.read_mode,
-            "cache_version": "2.0",
-            "created_at": pd.Timestamp.now().isoformat()
+
+    def _get_cache_key(self) -> str:
+        key_parts = [self.domain, self.start_time, self.end_time, self.read_mode, str(sorted(self.layers))]
+        if self.segment_name: key_parts.append(self.segment_name)
+        return hashlib.md5("|".join(key_parts).encode()).hexdigest()
+
+    def _get_cache_paths(self, cache_key: str) -> Dict[str, str]:
+        if not self.cache_root: return {}
+        root = Path(self.cache_root) / "data_views" / cache_key[:2] / cache_key
+        root.mkdir(parents=True, exist_ok=True)
+        return {
+            "tensor": str(root / "tensor.pt"),
+            "dates": str(root / "dates.npy"),
+            "stocks": str(root / "stocks.npy"),
+            "manifest": str(root / "manifest.json")
         }
-        with open(cache_paths["view_manifest"], "w") as f:
-            json.dump(manifest, f, indent=2)
-    
+
+    def _is_cache_valid(self, paths: Dict[str, str]) -> bool:
+        return all(os.path.exists(p) for p in paths.values())
+
+    def _load_from_cache(self, paths: Dict[str, str]) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
+        data = torch.load(paths["tensor"]).to(self.device)
+        dates = pd.Index(np.load(paths["dates"]))
+        stocks = pd.Index(np.load(paths["stocks"]))
+        return data, dates, stocks
+
+    def _save_to_cache(self, data: torch.Tensor, dates: pd.Index, stocks: pd.Index, paths: Dict[str, str]):
+        torch.save(data.cpu(), paths["tensor"])
+        np.save(paths["dates"], dates.values)
+        np.save(paths["stocks"], stocks.values)
+        with open(paths["manifest"], "w") as f:
+            json.dump({"created_at": datetime.now().isoformat()}, f)
+
     def _build_data_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """构建数据视图"""
-        # 根据读取模式选择数据源
-        if self.read_mode == "raw":
-            return self._build_from_raw_layer()
-        elif self.read_mode == "filled":
-            return self._build_from_filled_layer()
-        elif self.read_mode == "atomic":
-            return self._build_from_atomic_layer()
-        elif self.read_mode == "prefer_filled":
-            return self._build_prefer_filled_view()
-        elif self.read_mode == "stack":
-            return self._build_stacked_view()
-        elif self.read_mode == "mixed":
-            return self._build_mixed_view()
-        else:
-            raise ValueError(f"Unsupported read_mode: {self.read_mode}")
-
-    def _build_prefer_filled_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """构建优先填充视图: filled > raw，同时保留 atomic"""
-        input_files = self._resolve_input_files()
-        
-        # 加载基础数据 (filled 或 raw)
-        base_path = input_files.get("filled") or input_files.get("raw")
-        if not base_path:
-            raise FileNotFoundError(f"No base data (filled/raw) found for domain {self.domain}")
+        """通过执行计划加载数据并组装张量"""
+        # 1. 确定所有需要的层和列
+        layer_to_cols = {}
+        for feat, layer, col in self.feature_plan:
+            if layer == "none": continue
+            if layer not in layer_to_cols: layer_to_cols[layer] = set()
+            layer_to_cols[layer].add(col)
             
-        # 暂时只支持从单个主文件加载，atomic 字段可以通过 feature_names 机制在 _build_feature_tensors 中处理
-        # 或者后续扩展为多文件 merge。目前按指导先实现单文件加载。
-        return self._load_parquet_data(base_path)
+        # 2. 确定日期范围
+        all_dates = self._resolve_all_dates()
+        if not all_dates:
+            raise ValueError(f"No dates found in domain {self.domain}. Please check datahub or parquet files.")
 
-    def _build_stacked_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """构建堆叠视图: 从多个 layer 提取 feature_names"""
-        # 这是一个更复杂的实现，需要 merge 多个 parquet。
-        # 简化版：如果 feature_names 都在一个文件中，直接读；否则报错。
-        return self._build_prefer_filled_view() # 暂时使用 prefer_filled
-    
-    def _resolve_input_files(self) -> Dict[str, str]:
-        """
-        解析输入文件路径
-        
-        Returns:
-            Dict[str, str]: 层名称到文件路径的映射
-        """
-        input_files = {}
-        data_root = Path(self.data_dir) if self.data_dir else Path(".")
-        
-        # 1. 如果有 dataset_meta，优先使用其配置
-        if self.dataset_meta is not None:
-            meta_files = self.dataset_meta.raw.get("files", {})
-            for layer in ("raw", "filled", "atomic"):
-                if layer in meta_files:
-                    layer_info = meta_files[layer]
-                    rel_path = None
-                    
-                    if isinstance(layer_info, dict):
-                        rel_path = layer_info.get(self.domain)
-                    elif isinstance(layer_info, str):
-                        rel_path = layer_info
-                    
-                    if rel_path:
-                        # 检查是否为 DuckDB 表名
-                        if self.datahub and rel_path in self.datahub.list_tables():
-                            input_files[layer] = rel_path
-                            logger.info(f"Resolved layer {layer} to DuckDB table: {rel_path}")
-                            continue
-                            
-                        # 否则视为文件路径
-                        path = Path(rel_path)
-                        if not path.is_absolute():
-                            path = data_root / path
-                        
-                        if path.exists() or (not path.suffix and (path.parent / (path.name + ".parquet")).exists()):
-                            input_files[layer] = str(path)
-                            logger.info(f"Resolved layer {layer} to file: {path}")
-
-        # 2. 显式构造函数参数覆盖
-        if self.feature_file_map_raw and self.domain in self.feature_file_map_raw:
-            input_files["raw"] = self.feature_file_map_raw[self.domain]
-            
-        if self.feature_file_map_filled and self.domain in self.feature_file_map_filled:
-            input_files["filled"] = self.feature_file_map_filled[self.domain]
-            
-        if self.atomic_path:
-            path = Path(self.atomic_path)
-            if not path.is_absolute():
-                path = data_root / path
-            if path.exists():
-                input_files["atomic"] = str(path)
-
-        # 3. 最后的 Legacy Fallback (如果仍然为空)
-        if not input_files:
-            legacy_maps = {
-                'raw': {
-                    'A': 'feature_A_price_volume.parquet',
-                    'B': 'feature_B_moneyflow.parquet',
-                    'C': 'feature_C_chip.parquet',
-                    'E': 'feature_E_intraday_summary.parquet'
-                },
-                'filled': {
-                    'A': 'feature_A_filled.parquet',
-                    'B': 'feature_B_filled.parquet', 
-                    'C': 'feature_C_filled.parquet',
-                    'E': 'feature_E_filled.parquet'
-                }
-            }
-            for layer in ("filled", "raw"):
-                if layer in self.layers and self.domain in legacy_maps[layer]:
-                    path = data_root / legacy_maps[layer][self.domain]
-                    if path.exists():
-                        input_files[layer] = str(path)
-                        break
-        
-        return input_files
-    
-    def _build_from_raw_layer(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """从原始层构建数据"""
-        input_files = self._resolve_input_files()
-        if "raw" not in input_files:
-            raise FileNotFoundError(f"No raw layer file found for domain {self.domain}")
-        
-        return self._load_parquet_data(input_files["raw"])
-    
-    def _build_from_filled_layer(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """从填充层构建数据"""
-        input_files = self._resolve_input_files()
-        if "filled" not in input_files:
-            raise FileNotFoundError(f"No filled layer file found for domain {self.domain}")
-        
-        return self._load_parquet_data(input_files["filled"])
-    
-    def _build_from_atomic_layer(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """从原子层构建数据"""
-        input_files = self._resolve_input_files()
-        if "atomic" not in input_files:
-            raise FileNotFoundError(f"No atomic layer file found for domain {self.domain}")
-        
-        return self._load_parquet_data(input_files["atomic"])
-    
-    def _build_mixed_view(self) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """构建混合视图"""
-        input_files = self._resolve_input_files()
-        
-        # 优先顺序: filled > raw > atomic
-        if "filled" in input_files:
-            return self._load_parquet_data(input_files["filled"])
-        elif "raw" in input_files:
-            return self._load_parquet_data(input_files["raw"])
-        elif "atomic" in input_files:
-            return self._load_parquet_data(input_files["atomic"])
-        else:
-            raise FileNotFoundError(f"No data files found for layers {self.layers}")
-    
-    def _load_parquet_data(self, parquet_path: str) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """加载parquet数据"""
-        logger.info(f"Loading data from {parquet_path}")
-        
-        is_duckdb_table = False
-        if self.datahub:
-            # 检查是否为 DuckDB 中的表
-            tables = self.datahub.list_tables()
-            if parquet_path in tables:
-                is_duckdb_table = True
-                logger.info(f"Detected DuckDB table: {parquet_path}")
-
-        if not is_duckdb_table and not os.path.exists(parquet_path):
-            # 尝试补全后缀
-            if not parquet_path.endswith(".parquet"):
-                alt_path = parquet_path + ".parquet"
-                if os.path.exists(alt_path):
-                    parquet_path = alt_path
-                else:
-                    raise FileNotFoundError(f"Parquet file or DuckDB table not found: {parquet_path}")
-            else:
-                raise FileNotFoundError(f"Parquet file or DuckDB table not found: {parquet_path}")
-        
-        # 读取所有日期以确定范围
-        if is_duckdb_table:
-            df_dates = self.datahub.execute_sql(f"SELECT {self.date_column} FROM {parquet_path}").to_pandas()
-        else:
-            df_dates = pd.read_parquet(parquet_path, columns=[self.date_column])
-            
-        all_dates = df_dates[self.date_column].unique()
-        all_dates.sort()
-        all_dates_str = all_dates.astype(str)
-        
-        # 找到索引
+        # 确定目标区间的索引
         try:
-            start_idx = next(i for i, d in enumerate(all_dates_str) if d >= self.start_time)
-            # 处理 end_time 之后没有数据的情况
-            try:
-                end_idx = next(i for i, d in enumerate(all_dates_str) if d > self.end_time) - 1
-            except StopIteration:
-                end_idx = len(all_dates_str) - 1
+            start_idx = next(i for i, d in enumerate(all_dates) if d >= self.start_time)
         except StopIteration:
-            raise ValueError(f"Date range {self.start_time}-{self.end_time} not covered by data")
+            start_idx = len(all_dates) - 1
+            
+        try:
+            end_idx = next(i for i, d in enumerate(all_dates) if d > self.end_time) - 1
+        except StopIteration:
+            end_idx = len(all_dates) - 1
+            
+        if start_idx > end_idx:
+            start_idx = end_idx
         
-        if end_idx < start_idx:
-            raise ValueError(f"end_time {self.end_time} before start_time {self.start_time}")
+        # 目标日期序列
+        target_dates = all_dates[start_idx : end_idx + 1]
+        self._n_target_days = len(target_dates)
         
-        # 扩展范围
-        real_start_idx = max(0, start_idx - self.max_backtrack_days)
-        real_end_idx = min(len(all_dates), end_idx + self.max_future_days + 1)
+        # 构建完整的 buffer 日期序列 (backtrack + target + future)
+        # 必须严格保证长度，即使数据源中没有那么多日期，也要补足（用 dummy 日期或直接 nan）
+        # 这里我们直接从 all_dates 中切片，如果不足则向两端延伸
         
-        real_start_date = all_dates[real_start_idx]
-        real_end_date = all_dates[real_end_idx - 1]
+        real_start_idx = start_idx - self.max_backtrack_days
+        real_end_idx = end_idx + self.max_future_days + 1
         
-        logger.info(f"Loading expanded range: {real_start_date} to {real_end_date} (Request: {self.start_time}-{self.end_time})")
-        
-        # 记录完整日期范围
-        self._dates = pd.Index(all_dates[real_start_idx:real_end_idx])
-        
-        # 获取可用列
-        if is_duckdb_table:
-            available_columns = self.datahub.execute_sql(f"DESCRIBE {parquet_path}").to_pandas()["column_name"].tolist()
+        buffer_dates = []
+        # 处理左边界
+        if real_start_idx < 0:
+            # 补齐缺少的 backtrack 天数
+            buffer_dates.extend([f"PRE_{i:04d}" for i in range(abs(real_start_idx))])
+            buffer_dates.extend(all_dates[0 : end_idx + 1])
         else:
-            available_columns = self._available_columns(parquet_path)
+            buffer_dates.extend(all_dates[real_start_idx : end_idx + 1])
             
-        resolved_feature_columns = self._resolve_feature_columns(available_columns)
-        
-        # 构建所需列
-        required_columns = [self.date_column, self.code_column]
-        required_columns.extend(col for col in resolved_feature_columns.values() if col is not None)
-        
-        # 如果只需要收盘价，只加载必要列
-        if self.return_close_only and self.close_column in available_columns:
-            required_columns = [self.date_column, self.code_column, self.close_column]
-        
-        # 读取数据
-        if is_duckdb_table:
-            sql = f"""
-                SELECT {', '.join(sorted(set(required_columns)))}
-                FROM {parquet_path}
-                WHERE {self.date_column} BETWEEN '{real_start_date}' AND '{real_end_date}'
-            """
-            df = self.datahub.execute_sql(sql).to_pandas()
-        elif self.datahub:
-            logger.info(f"Using DuckDBDataHub to scan parquet: {parquet_path}")
-            # 使用 DataHub 高效扫描 Parquet
-            df = self.datahub.execute_sql(f"""
-                SELECT {', '.join(sorted(set(required_columns)))}
-                FROM read_parquet('{parquet_path}')
-                WHERE {self.date_column} BETWEEN '{real_start_date}' AND '{real_end_date}'
-            """).to_pandas()
+        # 处理右边界
+        if real_end_idx > len(all_dates):
+            # 补齐缺少的 future 天数
+            curr_len = len(buffer_dates)
+            needed = (self.max_backtrack_days + self._n_target_days + self.max_future_days) - curr_len
+            if needed > 0:
+                buffer_dates.extend(all_dates[end_idx + 1 :])
+                buffer_dates.extend([f"POST_{i:04d}" for i in range(needed - (len(all_dates) - (end_idx + 1)))])
         else:
-            df = pd.read_parquet(parquet_path, columns=sorted(set(required_columns)))
-            df = df[(df[self.date_column] >= real_start_date) & (df[self.date_column] <= real_end_date)]
+            buffer_dates = buffer_dates[:self.max_backtrack_days + self._n_target_days]
+            buffer_dates.extend(all_dates[end_idx + 1 : real_end_idx])
+
+        self._dates = pd.Index(buffer_dates)
+        real_start_date = all_dates[max(0, real_start_idx)]
+        real_end_date = all_dates[min(len(all_dates)-1, real_end_idx-1)]
         
-        # 合并daily数据用于目标计算
-        if self.daily_path and os.path.exists(self.daily_path) and not self.return_close_only:
-            df = self._merge_daily_data(df, real_start_date, real_end_date)
+        # 3. 加载每一层的数据
+        layer_dfs = {}
+        all_stocks = set()
         
-        # 应用样本池过滤
-        df = self._apply_sample_pool_filter(df)
-        
-        # 获取股票ID并排序
-        stock_ids = df[self.code_column].unique()
-        stock_ids.sort()
-        self._stock_ids = pd.Index(stock_ids)
-        
-        # 重构索引
-        full_idx = pd.MultiIndex.from_product([self._dates, self._stock_ids], 
-                                              names=[self.date_column, self.code_column])
-        df = df.set_index([self.date_column, self.code_column])
-        df = df.reindex(full_idx)
-        
-        # 如果只返回收盘价，直接返回
-        if self.return_close_only:
-            close_data = df[self.close_column].unstack(level=1)
-            close_tensor = torch.tensor(close_data.values, dtype=torch.float32)
-            return close_tensor.unsqueeze(0), self._dates, self._stock_ids
-        
-        # 构建特征张量
-        return self._build_feature_tensors(df, resolved_feature_columns)
-    
-    def _available_columns(self, parquet_path: str) -> List[str]:
-        """获取可用列"""
-        return pq.ParquetFile(parquet_path).schema.names
-    
-    def _resolve_feature_columns(self, available_columns: List[str]) -> Dict[str, Optional[str]]:
-        """解析特征列"""
-        resolved = {}
-        available = set(available_columns)
-        
-        for feature in self.features:
-            candidates = [
-                f"{feature}_robust",
-                f"{feature}_valid", 
-                f"{feature}_raw",
-                feature,
-            ]
-            resolved[feature] = next((col for col in candidates if col in available), None)
-        return resolved
-    
-    def _merge_daily_data(self, df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
-        """合并daily数据"""
-        logger.info(f"Merging daily data from {self.daily_path}")
-        df_market = pd.read_parquet(self.daily_path, 
-                                   columns=[self.code_column, self.date_column, self.close_column])
-        df_market[self.date_column] = df_market[self.date_column].astype(str)
-        df_market = df_market[(df_market[self.date_column] >= start_date) & 
-                             (df_market[self.date_column] <= end_date)]
-        
-        if self.sample_pool:
-            if isinstance(self.sample_pool, list):
-                df_market = df_market[df_market[self.code_column].isin(self.sample_pool)]
-            elif isinstance(self.sample_pool, dict) and self.sample_pool.get("type") == "dynamic":
-                all_pool_stocks = set()
-                for p in self.sample_pool["pools"].values():
-                    all_pool_stocks.update(p)
-                df_market = df_market[df_market[self.code_column].isin(all_pool_stocks)]
-        
-        return pd.merge(df, df_market, on=[self.code_column, self.date_column], how='left', suffixes=('', '_daily'))
-    
-    def _apply_sample_pool_filter(self, df: pd.DataFrame) -> pd.DataFrame:
-        """应用样本池过滤"""
-        if not self.sample_pool:
-            return df
-        
-        if isinstance(self.sample_pool, list):
-            # 静态池
-            return df[df[self.code_column].isin(self.sample_pool)]
-        
-        elif isinstance(self.sample_pool, dict) and self.sample_pool.get("type") == "dynamic":
-            logger.info("Applying dynamic pool filtering...")
-            pools = self.sample_pool["pools"]
+        for layer, cols in layer_to_cols.items():
+            src = self.layer_sources[layer]
+            cols.add(src.date_col)
+            cols.add(src.code_col)
             
-            # 获取所有池中的股票
-            all_pool_stocks = set()
-            for p in pools.values():
-                all_pool_stocks.update(p)
-            df = df[df[self.code_column].isin(all_pool_stocks)]
-            
-            # 按日期分组处理
-            pool_dates = sorted(pools.keys())
-            df_dates_str = df[self.date_column].astype(str)
-            mask = pd.Series(False, index=df.index)
-            
-            for i in range(len(pool_dates)):
-                current_rebal = pool_dates[i]
-                next_rebal = pool_dates[i+1] if i + 1 < len(pool_dates) else "99991231"
+            df = self._read_source(src, list(cols), real_start_date, real_end_date)
+            if df.empty: continue
                 
-                period_mask = (df_dates_str >= current_rebal) & (df_dates_str < next_rebal)
-                if period_mask.any():
-                    stocks_in_pool = pools[current_rebal]
-                    stock_mask = df[self.code_column].isin(stocks_in_pool)
-                    mask |= (period_mask & stock_mask)
+            df[src.date_col] = df[src.date_col].astype(str)
+            all_stocks.update(df[src.code_col].unique())
+            layer_dfs[layer] = df.set_index([src.date_col, src.code_col])
             
-            # 对不在池中的股票设置NaN
-            cols_to_mask = [c for c in df.columns if c not in [self.code_column, self.date_column]]
-            df.loc[~mask, cols_to_mask] = np.nan
-            logger.info("Dynamic filtering applied as NaN mask.")
+        if not all_stocks:
+            self._stock_ids = pd.Index([])
+        else:
+            self._stock_ids = pd.Index(sorted(all_stocks))
             
-        return df
-    
-    def _build_feature_tensors(self, df: pd.DataFrame, resolved_feature_columns: Dict[str, Optional[str]]) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """构建特征张量"""
-        feature_tensors = {}
-        dates = self._dates
-        stocks = self._stock_ids
+        full_idx = pd.MultiIndex.from_product([self._dates, self._stock_ids])
         
-        # 处理特征
-        for feature in self.features:
-            col_name = resolved_feature_columns.get(feature)
-            
-            if col_name not in df.columns:
-                logger.warning(f"Feature {feature} not found in parquet columns. Filling with NaN.")
-                tensor = torch.full((len(dates), len(stocks)), float('nan'))
+        # 4. 组装特征张量
+        feature_tensors = []
+        for feat, layer, col in self.feature_plan:
+            if layer == "none" or layer not in layer_dfs or self._stock_ids.empty:
+                tensor = torch.full((len(self._dates), len(self._stock_ids)), float('nan'))
             else:
-                feature_data = df[col_name]
-                feature_df = feature_data.unstack(level=1)
-                # 应用安全填充
-                feature_df = feature_df.ffill(limit=5)
-                tensor = torch.tensor(feature_df.values, dtype=torch.float32)
-            
-            feature_tensors[feature.upper()] = tensor
-        
-        # 特殊处理CLOSE
-        if 'CLOSE' not in feature_tensors and self.close_column in df.columns:
-            close_data = df[self.close_column].unstack(level=1)
-            feature_tensors['CLOSE'] = torch.tensor(close_data.values, dtype=torch.float32)
-        elif 'CLOSE' not in feature_tensors and 'ret_cc_1d' in df.columns:
-            # 从收益率合成价格
-            ret_data = df['ret_cc_1d'].unstack(level=1).fillna(0.0)
-            price_index = (1 + ret_data).cumprod()
-            feature_tensors['CLOSE'] = torch.tensor(price_index.values, dtype=torch.float32)
-        
-        # 构建最终张量
-        return self._assemble_final_tensor(feature_tensors, dates, stocks)
-    
-    def _assemble_final_tensor(self, feature_tensors: Dict[str, torch.Tensor], 
-                             dates: pd.Index, stocks: pd.Index) -> Tuple[torch.Tensor, pd.Index, pd.Index]:
-        """组装最终张量"""
-        # 创建特征枚举
-        feature_enum = self.registry_manager.create_feature_enum(self.domain, self.status_filter)
-        
-        # 按枚举顺序创建张量列表
-        sorted_features = sorted(feature_enum.__members__.items(), key=lambda x: x[1])
-        final_tensor_list = []
-        
-        for name, idx in sorted_features:
-            if name in feature_tensors:
-                final_tensor_list.append(feature_tensors[name])
-            elif name == 'CLOSE' and self.close_column:
-                # 标准CLOSE处理
-                if 'CLOSE' in feature_tensors:
-                    final_tensor_list.append(feature_tensors['CLOSE'])
+                df_layer = layer_dfs[layer]
+                if col in df_layer.columns:
+                    # reindex 会自动处理 buffer 中补充的 PRE/POST 日期为 NaN
+                    feat_series = df_layer[col].reindex(full_idx)
+                    feat_df = feat_series.unstack(level=1)
+                    feat_df = feat_df.ffill(limit=5)
+                    tensor = torch.tensor(feat_df.values, dtype=torch.float32)
                 else:
-                    logger.warning(f"CLOSE not found, filling with NaN")
-                    final_tensor_list.append(torch.full((len(dates), len(stocks)), float('nan')))
+                    tensor = torch.full((len(self._dates), len(self._stock_ids)), float('nan'))
+            feature_tensors.append(tensor)
+            
+        if not feature_tensors:
+             data = torch.empty((len(self._dates), 0, len(self._stock_ids)))
+        else:
+             data = torch.stack(feature_tensors, dim=0).permute(1, 0, 2)
+             
+        return data.to(self.device), self._dates, self._stock_ids
+
+    def _resolve_all_dates(self) -> List[str]:
+        # 随便找一层获取所有日期
+        if not self.layer_sources: return []
+        src = next(iter(self.layer_sources.values()))
+        try:
+            if src.source_type == "duckdb_table":
+                df = self.datahub.execute_sql(f"SELECT DISTINCT {src.date_col} FROM {src.name} ORDER BY {src.date_col}").to_pandas()
+                dates = df[src.date_col].astype(str).tolist()
             else:
-                logger.warning(f"Feature {name} from Enum not found, filling with NaN")
-                final_tensor_list.append(torch.full((len(dates), len(stocks)), float('nan')))
-        
-        # 堆叠张量 (n_features, n_days, n_stocks)
-        data = torch.stack(final_tensor_list, dim=0)
-        # 转置为 (n_days, n_features, n_stocks)
-        data = data.permute(1, 0, 2)
-        
-        return data.to(self.device), dates, stocks
-    
-    # 属性访问
+                # 兼容处理：read_parquet 可能会读到 datetime 对象
+                df = pd.read_parquet(src.name, columns=[src.date_col])
+                dates = sorted(df[src.date_col].unique().astype(str).tolist())
+            
+            # 过滤掉非法日期
+            return [d for d in dates if len(d) >= 8]
+        except Exception as e:
+            logger.error(f"Error resolving all dates from {src.name}: {e}")
+            return []
+
+    def _read_source(self, src: LayerSource, cols: List[str], start_date: str, end_date: str) -> pd.DataFrame:
+        if src.source_type == "duckdb_table":
+            sql = f"SELECT {', '.join(cols)} FROM {src.name} WHERE {src.date_col} BETWEEN '{start_date}' AND '{end_date}'"
+            return self.datahub.execute_sql(sql).to_pandas()
+        else:
+            if self.datahub:
+                # 使用 DuckDB 扫描 Parquet
+                sql = f"SELECT {', '.join(cols)} FROM read_parquet('{src.name}') WHERE {src.date_col} BETWEEN '{start_date}' AND '{end_date}'"
+                return self.datahub.execute_sql(sql).to_pandas()
+            else:
+                df = pd.read_parquet(src.name, columns=cols)
+                df[src.date_col] = df[src.date_col].astype(str)
+                return df[(df[src.date_col] >= start_date) & (df[src.date_col] <= end_date)]
+
     @property
-    def n_features(self) -> int:
-        return len(self.features)
-    
+    def dates(self) -> pd.Index: return self._dates
+    @property
+    def stock_ids(self) -> pd.Index: return self._stock_ids
+    @property
+    def mask(self) -> torch.Tensor: return ~torch.isnan(self.data[:, 0, :])
+
+    @property
+    def n_days(self) -> int:
+        """返回目标区间的长度，供 alphagen.Expression 使用"""
+        return self._n_target_days
+
     @property
     def n_stocks(self) -> int:
         return len(self._stock_ids)
-    
-    @property
-    def n_days(self) -> int:
-        return len(self._dates) - self.max_backtrack_days - self.max_future_days
-    
-    @property
-    def dates(self) -> pd.Index:
-        return self._dates
-    
-    @property
-    def stock_ids(self) -> pd.Index:
-        return self._stock_ids
-    
-    @property
-    def mask(self) -> torch.Tensor:
-        """
-        返回布尔掩码，形状为 (n_days, n_stocks)
-        True表示数据可用
-        """
-        return ~torch.isnan(self.data[:, 0, :])
-    
-    @property
-    def feature_map(self) -> Dict[str, IntEnum]:
-        """
-        返回特征映射，用于表达式解析器
-        排除保留的CLOSE成员以防止在表达式中使用
-        """
-        enum_cls = self.registry_manager.create_feature_enum(self.domain, self.status_filter)
-        mapping = {}
-        for member in enum_cls:
-            if member.name != 'CLOSE':
-                mapping[f"${member.name.lower()}"] = member
-        return mapping
-    
-    # 数据转换方法
-    def make_dataframe(self, data: Union[torch.Tensor, List[torch.Tensor]], 
-                      columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """将张量转换回DataFrame"""
-        if isinstance(data, list):
-            data = torch.stack(data, dim=2)
-        if len(data.shape) == 2:
-            data = data.unsqueeze(2)
-        if columns is None:
-            columns = [str(i) for i in range(data.shape[2])]
-        
-        n_days, n_stocks, n_columns = data.shape
-        
-        # 处理日期对齐
-        date_index = self._dates
-        if len(date_index) != n_days:
-            if len(date_index) > n_days:
-                date_index = date_index[-n_days:]
-            else:
-                raise ValueError(f"Data length {n_days} > Dates length {len(date_index)}")
-        
-        index = pd.MultiIndex.from_product([date_index, self._stock_ids])
-        data = data.reshape(-1, n_columns)
-        return pd.DataFrame(data.detach().cpu().numpy(), index=index, columns=columns)
+
+    def __getitem__(self, item: Union[int, IntEnum]) -> torch.Tensor:
+        """支持通过索引或枚举获取特征张量"""
+        if isinstance(item, IntEnum):
+            idx = item.value
+        else:
+            idx = item
+        return self.data[:, idx, :]

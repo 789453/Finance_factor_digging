@@ -191,7 +191,9 @@ class DatasetMeta:
             "data_dir": self.data_dir,
             "freq_group": self.freq_group,
             "layers": self.layers_enabled,
+            "dataset_meta": self,
         }
+
         
         # 列名映射
         if self.columns:

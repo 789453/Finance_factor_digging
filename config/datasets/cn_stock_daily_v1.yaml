@@ -1,11 +1,32 @@
 dataset_id: cn.stock.daily.v1
 name: CN Stock Daily V1
-frequency: daily
-domain: A
-data_dir: D:/Trading/data_ever_26_3_14/data
-asset_type: equity
+
+region: cn
 market: a_share
+asset_type: equity
+frequency: daily
 freq_group: eod
+domain: A
+timezone: Asia/Shanghai
+calendar: cn_stock
+
+data_dir: D:/Trading/data_ever_26_3_14/data
+
+datahub:
+  profile: config/datahub/tushare_duckdb.yaml
+  required_datasets:
+    - stock_daily
+    - stock_daily_basic
+    - stock_moneyflow
+    - stock_cyq_perf
+
+files:
+  raw:
+    A: stock_daily
+  filled:
+    A: stock_daily_filled
+  atomic:
+    A: stock_daily_atomic
 
 columns:
   date: trade_date
@@ -18,24 +39,33 @@ columns:
   amount: amount
 
 target:
-  price_column: close
   expression: forward_return
-  label_days: 1
-
-files:
-  raw:
-    A: silver.fact_stock_daily
-    B: silver.fact_stock_moneyflow
-    C: silver.fact_stock_cyq_perf
-    E: silver.fact_stock_mins_60m
-  filled:
-    A: silver.fact_stock_daily
-    B: silver.fact_stock_moneyflow
-    C: silver.fact_stock_cyq_perf
-    E: silver.fact_stock_mins_60m
-
-layers_enabled: [raw, filled]
+  price_column: close
+  fallback_price_columns: [adj_close, close]
+  label_days: 5
+  neutralize: null
 
 date_range:
-  start: "20100101"
-  end: "20261231"
+  start: "20100104"
+  end: "20260423"
+
+layers_enabled:
+  - raw
+  - atomic
+
+operator_whitelist:
+  - Ref
+  - TsMean
+  - TsStd
+  - TsRank
+  - TsDelta
+  - TsCorr
+  - TsCov
+  - Add
+  - Sub
+  - Mul
+  - Div
+  - Rank
+
+recommended_delta_times: [3, 5, 10, 20, 40, 60]
+recommended_constants: [0.5, 1.0, 2.0, 3.0]

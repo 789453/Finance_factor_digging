@@ -94,15 +94,16 @@ def validate_family_spec(spec: Dict[str, Any]) -> List[str]:
     
     return errors
 
-def build_family_search_space(family_spec: Dict[str, Any]) -> Tuple[List, List, List]:
+def build_family_search_space(family_spec: Dict[str, Any], dataset_meta: Optional[Any] = None) -> Tuple[List, List, List, List]:
     """
     根据因子族规格构建搜索空间
     
     Args:
         family_spec: 因子族规格
+        dataset_meta: 数据集元数据对象
         
     Returns:
-        (operators, delta_times, constants) 元组
+        (features, operators, delta_times, constants) 元组
     """
     # 验证规格
     errors = validate_family_spec(family_spec)
@@ -113,11 +114,13 @@ def build_family_search_space(family_spec: Dict[str, Any]) -> Tuple[List, List, 
     from alpha_gfn.search_space_v2 import build_search_space
         
     # 转换字段名以匹配 search_space_v2
-    # search_space_v2 期望 operator_names 字段
     if 'operator_whitelist' in family_spec and 'operator_names' not in family_spec:
         family_spec['operator_names'] = family_spec['operator_whitelist']
         
-    operators, delta_times, constants = build_search_space(family_spec=family_spec)
+    features, operators, delta_times, constants = build_search_space(
+        family_spec=family_spec, 
+        dataset_meta=dataset_meta
+    )
     
     # 二次过滤 (如果 family_spec 有额外要求)
     forbid_operators = family_spec.get('forbid_operators', [])
@@ -125,9 +128,9 @@ def build_family_search_space(family_spec: Dict[str, Any]) -> Tuple[List, List, 
         operators = [op for op in operators if (getattr(op, "__name__", op.__class__.__name__)) not in forbid_operators]
         
     logger.info(f"Built search space for family {family_spec.get('family_id', 'unknown')}: "
-                f"{len(operators)} operators, {len(delta_times)} delta_times, {len(constants)} constants")
+                f"{len(features)} features, {len(operators)} operators, {len(delta_times)} delta_times, {len(constants)} constants")
     
-    return operators, delta_times, constants
+    return features, operators, delta_times, constants
 
 def create_default_family_spec(family_id: str, domain: str = "A") -> Dict[str, Any]:
     """

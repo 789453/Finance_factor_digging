@@ -5,6 +5,7 @@
 
 import hashlib
 import logging
+import os
 from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
 import torch
@@ -12,7 +13,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from alphagen.models.alpha_pool import AlphaPool
 from alphagen.data.expression import Expression
-from alphagen_generic.parquet_feature_loader import ParquetFeatureLoader
+from alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2 as ParquetFeatureLoader
 try:
     from alpha_gfn.cache_manager import CacheManager, CacheKeyBuilder
 except ImportError:
@@ -73,6 +74,11 @@ class AlphaPoolGFN(AlphaPool):
         self.adaptive_threshold_decay = adaptive_threshold_decay
         self.enable_cache = enable_cache
         self.cache_key_builder = cache_key_builder or CacheKeyBuilder()
+        
+        # 获取 log_dir 并初始化拒绝日志
+        self.log_dir = "."
+        # 尝试从 stock_data 或上下文推断 log_dir，或者在外部设置
+        self.rejection_file = "rejections.csv"
         
         # 初始化嵌入存储
         self.embeddings: List[Optional[Tensor]] = [None for _ in range(capacity + 1)]
@@ -181,6 +187,68 @@ class AlphaPoolGFN(AlphaPool):
                 total_loss += weights[i].item() * mse
         return total_loss
 
+    def _init_rejection_log(self, log_dir: str):
+        """初始化拒绝日志文件"""
+        self.log_dir = log_dir
+        self.rejection_file = os.path.join(log_dir, "rejections.csv")
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir, exist_ok=True)
+        if not os.path.exists(self.rejection_file):
+            with open(self.rejection_file, "w", encoding="utf-8") as f:
+                f.write("timestamp,expression,ic,max_mut_corr,reason\n")
+
+    def _log_rejection(self, expr: Expression, ic: float, max_mut: float, reason: str):
+        """记录被拒绝的因子"""
+        import datetime
+        import os
+        if not hasattr(self, "rejection_file") or not os.path.exists(os.path.dirname(self.rejection_file)):
+            return
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 清理表达式中的换行符
+        expr_str = str(expr).replace("\n", " ").replace("\r", "")
+        with open(self.rejection_file, "a", encoding="utf-8") as f:
+            f.write(f"{timestamp},\"{expr_str}\",{ic:.6f},{max_mut:.6f},\"{reason}\"\n")
+
+    def _calc_ics(self, value: Tensor, ic_mut_threshold: float = 0.9) -> Tuple[float, np.ndarray]:
+        """计算 IC 和互相关性"""
+        try:
+            # 1. 计算与 Label 的 IC
+            # 使用父类已经计算并对齐好的 target
+            label = self.target # 形状 [n_days, n_stocks]
+            
+            # 因子值也需要 normalize (AlphaPool 的 try_new_expr 已经做了，但我们这里是独立的实现)
+            value = self._normalize_by_day(value)
+            
+            v_flat = value.flatten()
+            l_flat = label.flatten()
+            
+            mask = ~(torch.isnan(v_flat) | torch.isnan(l_flat))
+            if mask.sum() < 2:
+                return 0.0, np.array([])
+            
+            # 检查是否为常数
+            if torch.std(v_flat[mask]) < 1e-8:
+                return 0.0, np.array([])
+
+            # 使用 alphagen 提供的 batch_pearsonr 以保持严谨性
+            from alphagen.utils.correlation import batch_pearsonr
+            ic_per_day = batch_pearsonr(value, label)
+            ic = ic_per_day.mean().item()
+            if np.isnan(ic): ic = 0.0
+            
+            # 2. 计算与池中已有因子的互相关性
+            ic_mut = []
+            for i in range(self.size):
+                if self.values[i] is not None:
+                    mut_ic = batch_pearsonr(value, self.values[i]).mean().item()
+                    if np.isnan(mut_ic): mut_ic = 1.0
+                    ic_mut.append(mut_ic)
+            
+            return ic, np.array(ic_mut)
+        except Exception as e:
+            logger.error(f"IC calculation failed: {e}")
+            return 0.0, np.array([])
+
     def try_new_expr(self, expr: Expression, embedding: Optional[Tensor] = None) -> Tuple[float, float]:
         """
         尝试添加新表达式到池中
@@ -241,6 +309,8 @@ class AlphaPoolGFN(AlphaPool):
             logger.info(f"[Pool Add] {expr} - {reason}")
         else:
             self.stats['pool_rejections'] += 1
+            max_mut = np.max(ic_mut) if ic_mut.size > 0 else 0.0
+            self._log_rejection(expr, ic_ret, max_mut, reason)
             logger.debug(f"[Pool Reject] {expr} - {reason}")
         
         # 计算新颖性分数
@@ -404,13 +474,27 @@ class AlphaPoolGFN(AlphaPool):
         expr: Expression,
         value: Tensor,
         ic_ret: float,
-        ic_mut: List[float],
+        ic_mut: np.ndarray,
         embedding: Optional[Tensor] = None
     ):
-        """添加因子到池中"""
-        super()._add_factor(expr, value, ic_ret, ic_mut)
-        n = self.size - 1
-        self.embeddings[n] = embedding
+        """向池中添加因子，并同步更新基类状态"""
+        n = self.size
+        if self.size < self.capacity:
+            # 池未满，直接追加
+            self.exprs.append(expr)
+            self.values.append(value)
+            self.single_ics[n] = ic_ret
+            self.embeddings[n] = embedding
+            self.size += 1
+        else:
+            # 池已满，替换最差的（基于 IC）
+            n = np.argmin(self.single_ics[:self.capacity])
+            self.exprs[n] = expr
+            self.values[n] = value
+            self.single_ics[n] = ic_ret
+            self.embeddings[n] = embedding
+            
+        logger.info(f"Factor added to pool at index {n}: {expr} (IC: {ic_ret:.4f})")
     
     def _pop(self) -> None:
         """移除池中IC最低的因子"""
@@ -449,7 +533,7 @@ class AlphaPoolGFN(AlphaPool):
     def export_pool(self, output_path: str):
         """导出池到文件"""
         pool_data = {
-            'expressions': self.exprs[:self.size],
+            'expressions': [str(expr) for expr in self.exprs[:self.size]],
             'ics': self.single_ics[:self.size].tolist() if hasattr(self, 'single_ics') else [],
             'stats': self.get_stats(),
             'embeddings': [e.tolist() if e is not None else None for e in self.embeddings[:self.size]]

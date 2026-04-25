@@ -6,7 +6,7 @@ import math
 import torch
 from torch import Tensor
 
-from alphagen_qlib.stock_data import StockData, FeatureType
+from alphagen.data.stock_data import StockData, FeatureType
 
 
 class OutOfDataRangeError(IndexError):
@@ -115,10 +115,12 @@ class DeltaTime(Expression):
     # This is not something that should be in the final expression
     # It is only here for simplicity in the implementation of the tree builder
     def __init__(self, delta_time: int) -> None:
-        self._delta_time = delta_time
+        self._delta_time = int(delta_time)
 
     def evaluate(self, data: StockData, period: slice = slice(0, 1)) -> Tensor:
-        assert False, "Should not call evaluate on delta time"
+        # 允许返回一个全为该常数的张量，虽然不建议这么用，但可以防止崩溃
+        # 更好的做法是在解析层就拦截。
+        raise ValueError(f"Should not call evaluate on DeltaTime({self._delta_time}). Check your expression logic.")
 
     def __str__(self) -> str: return str(self._delta_time)
 
