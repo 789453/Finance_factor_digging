@@ -72,6 +72,7 @@ class MiningRuntimeContext:
     registry: FeatureRegistryManagerV2
     datahub: Optional[DuckDBDataHub]
     train_loader: ParquetFeatureLoaderV2
+    valid_loader: ParquetFeatureLoaderV2
     test_loader: ParquetFeatureLoaderV2
     target: Expression
     operators: List[Any]
@@ -117,11 +118,10 @@ def load_runtime_specs(job_spec_path: str, dataset_meta_path: Optional[str]) -> 
     family_spec = load_family_spec(job_spec.family_id)
     return job_spec, dataset_meta, family_spec
 
-def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, device: torch.device) -> Tuple[FeatureRegistryManagerV2, Optional[DuckDBDataHub], ParquetFeatureLoaderV2, ParquetFeatureLoaderV2, ParquetFeatureLoaderV2]:
+def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, device: torch.device, log_dir: Optional[str] = None) -> Tuple[FeatureRegistryManagerV2, Optional[DuckDBDataHub], ParquetFeatureLoaderV2, ParquetFeatureLoaderV2, ParquetFeatureLoaderV2]:
     registry = FeatureRegistryManagerV2()
     registry.register_from_dataset_meta(dataset_meta)
-    
-    # Init DataHub
+
     datahub = None
     hub_config_path = job_spec.raw.get("datahub_config")
     try:
@@ -139,7 +139,6 @@ def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, devic
         logger.warning(f"DataHub init failed: {e}. Falling back to Parquet.")
 
 
-    # Build Loaders
     common_kwargs = dataset_meta.to_loader_kwargs()
     common_kwargs.update({
         "registry_manager": registry,
@@ -152,15 +151,24 @@ def build_data_context(job_spec: MiningJobSpec, dataset_meta: DatasetMeta, devic
         "segment_name": job_spec.segment_name,
         "datahub": datahub
     })
-    
+
     train_loader = ParquetFeatureLoaderV2(start_time=job_spec.train_start, end_time=job_spec.train_end, **common_kwargs)
-    
+
     valid_start = job_spec.raw.get("valid_start", job_spec.test_start)
     valid_end = job_spec.raw.get("valid_end", job_spec.test_end)
     valid_loader = ParquetFeatureLoaderV2(start_time=valid_start, end_time=valid_end, **common_kwargs)
-    
+
     test_loader = ParquetFeatureLoaderV2(start_time=job_spec.test_start, end_time=job_spec.test_end, **common_kwargs)
-    
+
+    if log_dir:
+        diagnostics = {
+            "train": train_loader.diagnose(),
+            "valid": valid_loader.diagnose(),
+            "test": test_loader.diagnose(),
+        }
+        with open(os.path.join(log_dir, "data_diagnostics.json"), "w", encoding="utf-8") as f:
+            json.dump(diagnostics, f, indent=2, ensure_ascii=False, default=str)
+
     return registry, datahub, train_loader, valid_loader, test_loader
 
 def build_alpha_context(job_spec, dataset_meta, family_spec, registry, train_loader, valid_loader=None, test_loader=None):
@@ -220,7 +228,7 @@ def build_alpha_context(job_spec, dataset_meta, family_spec, registry, train_loa
         semantic_sim_threshold=job_spec.raw.get("semantic_sim_threshold", 0.92),
     )
     
-    return target, feature_members, operators, delta_times, constants, pool, quality_validator
+    return target, feature_members, operators, delta_times, constants, pool, quality_validator, feature_enum
 
 def build_gfn_context(job_spec, pool, registry, dataset_meta, features, operators, delta_times, constants, device, quality_validator=None):
     # Env
@@ -350,20 +358,313 @@ def run_training_loop(ctx: MiningRuntimeContext) -> Dict[str, Any]:
     return manifest
 
 
-def mine_factors(job_spec_path: str, dataset_meta_path: Optional[str] = None, 
+def run_candidate_eval_loop(job_spec, dataset_meta, family_spec, registry, datahub,
+                            train_loader, valid_loader, test_loader, target, pool,
+                            quality_validator, operators, delta_times, constants,
+                            log_dir, device, feature_enum=None) -> Dict[str, Any]:
+    manifest = {
+        "job_id": job_spec.job_id,
+        "dataset_id": job_spec.dataset_id,
+        "family_id": job_spec.family_id,
+        "train_range": [job_spec.train_start, job_spec.train_end],
+        "valid_range": [job_spec.raw.get("valid_start", job_spec.test_start),
+                       job_spec.raw.get("valid_end", job_spec.test_end)],
+        "test_range": [job_spec.test_start, job_spec.test_end],
+        "generator": job_spec.generator_name,
+        "status": "running",
+        "start_time": datetime.now().isoformat()
+    }
+    with open(os.path.join(log_dir, "run_manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    candidates = load_candidates_from_job(job_spec, job_spec.generator_name)
+    results = []
+
+    for cand in candidates:
+        result = evaluate_candidate(cand, pool, train_loader, valid_loader, test_loader,
+                                   quality_validator, log_dir, job_spec, feature_enum)
+        results.append(result)
+        record_candidate(result, log_dir)
+
+    summary = summarize_candidate_results(results)
+    with open(os.path.join(log_dir, "candidate_summary.json"), "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, default=str)
+
+    manifest["status"] = "completed"
+    manifest["end_time"] = datetime.now().isoformat()
+    manifest["total"] = summary.get("total", 0)
+    manifest["accepted"] = summary.get("accepted", 0)
+    manifest["rejected"] = summary.get("rejected", 0)
+    with open(os.path.join(log_dir, "run_manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    return manifest
+
+
+def load_candidates_from_job(job_spec, generator_name: str) -> List[Dict[str, Any]]:
+    candidates = []
+    if generator_name == "manual":
+        source = job_spec.raw.get("generator", {}).get("expression_source")
+        if source and os.path.exists(source):
+            with open(source, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    for i, expr_str in enumerate(data):
+                        candidates.append({
+                            "candidate_id": f"manual_{i}",
+                            "generator": "manual",
+                            "raw_expression": expr_str,
+                        })
+                elif isinstance(data, dict) and "expressions" in data:
+                    for i, expr_str in enumerate(data["expressions"]):
+                        candidates.append({
+                            "candidate_id": f"manual_{i}",
+                            "generator": "manual",
+                            "raw_expression": expr_str,
+                        })
+        else:
+            generator_exprs = job_spec.raw.get("generator", {}).get("expressions", [])
+            if generator_exprs:
+                for i, expr_str in enumerate(generator_exprs):
+                    candidates.append({
+                        "candidate_id": f"manual_{i}",
+                        "generator": "manual",
+                        "raw_expression": expr_str,
+                    })
+            else:
+                engine_exprs = job_spec.raw.get("engine", {}).get("params", {}).get("expressions", [])
+                for i, expr_str in enumerate(engine_exprs):
+                    candidates.append({
+                        "candidate_id": f"manual_{i}",
+                        "generator": "manual",
+                        "raw_expression": expr_str,
+                    })
+    return candidates
+
+
+def evaluate_candidate(candidate, pool, train_loader, valid_loader, test_loader,
+                      quality_validator, log_dir, job_spec, feature_enum=None) -> Dict[str, Any]:
+    from alphagen.data.tree import ExpressionParser
+    from dataclasses import asdict
+
+    raw_expr = candidate.get("raw_expression", "")
+    result = {
+        "candidate_id": candidate.get("candidate_id", "unknown"),
+        "generator": candidate.get("generator", "unknown"),
+        "raw_expression": raw_expr,
+        "canonical_expression": None,
+        "accepted": False,
+        "stage": "unknown",
+        "reason": "",
+        "metrics": {},
+        "quality": {},
+        "exception_type": None,
+        "exception_message": None,
+    }
+
+    try:
+        if feature_enum is not None:
+            parser = ExpressionParser(feature_enum)
+            expr = parser.parse(raw_expr)
+        else:
+            from alphagen.data.tree import ExpressionParser
+            expr = ExpressionParser().parse(raw_expr)
+    except Exception as e:
+        result["stage"] = "parse"
+        result["reason"] = f"parse_error:{type(e).__name__}"
+        result["exception_type"] = type(e).__name__
+        result["exception_message"] = str(e)
+        return result
+
+    result["stage"] = "quality"
+    q_report = quality_validator.validate(expr)
+    if not q_report.accept:
+        result["reason"] = f"quality:{q_report.reason}"
+        result["quality"] = asdict(q_report) if hasattr(q_report, "__dataclass_fields__") else {}
+        return result
+
+    result["quality"] = asdict(q_report) if hasattr(q_report, "__dataclass_fields__") else {}
+    result["stage"] = "evaluate"
+
+    try:
+        value = pool._normalize_by_day(expr.evaluate(train_loader))
+    except Exception as e:
+        result["reason"] = f"eval_error:{type(e).__name__}"
+        result["exception_type"] = type(e).__name__
+        result["exception_message"] = str(e)
+        return result
+
+    sanity = pool.metrics_evaluator.value_sanity(value)
+    if not sanity["ok"]:
+        result["stage"] = "value_sanity"
+        result["reason"] = f"value_sanity:{sanity['reason']}"
+        result["metrics"] = sanity
+        return result
+
+    train_metrics = pool.metrics_evaluator.evaluate_tensor(value, train_loader.target)
+    direction = 1.0 if train_metrics["ic_mean"] >= 0 else -1.0
+
+    result["metrics"]["train"] = train_metrics
+
+    if train_metrics["ic_adj"] < job_spec.thresholds["min_train_ic"]:
+        result["stage"] = "train_metrics"
+        result["reason"] = f"low_train_ic:{train_metrics['ic_adj']:.4f} < {job_spec.thresholds['min_train_ic']}"
+        return result
+
+    if valid_loader:
+        try:
+            valid_value = pool._normalize_by_day(expr.evaluate(valid_loader))
+            valid_metrics = pool.metrics_evaluator.evaluate_tensor(
+                valid_value,
+                valid_loader.target if hasattr(valid_loader, 'target') else train_loader.target,
+                direction=direction
+            )
+            result["metrics"]["valid"] = valid_metrics
+
+            if valid_metrics["ic_adj"] < job_spec.thresholds["min_valid_ic"]:
+                result["stage"] = "valid_metrics"
+                result["reason"] = f"low_valid_ic:{valid_metrics['ic_adj']:.4f} < {job_spec.thresholds['min_valid_ic']}"
+                return result
+        except Exception as e:
+            result["reason"] = f"valid_eval_error:{type(e).__name__}"
+            result["exception_type"] = type(e).__name__
+            result["exception_message"] = str(e)
+            return result
+
+    try:
+        canonical = pool.canonicalizer.canonicalize(expr)
+        result["canonical_expression"] = str(canonical)
+        pool.try_new_expr(expr)
+        result["accepted"] = True
+        result["stage"] = "accepted"
+        result["reason"] = "accepted"
+    except Exception as e:
+        result["stage"] = "pool_add"
+        result["reason"] = f"pool_error:{type(e).__name__}"
+        result["exception_type"] = type(e).__name__
+        result["exception_message"] = str(e)
+
+    return result
+
+
+def record_candidate(result: Dict[str, Any], log_dir: str):
+    import datetime
+    event_file = os.path.join(log_dir, "candidate_events.jsonl")
+    event = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        **result
+    }
+    with open(event_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+
+
+def summarize_candidate_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    summary = {
+        "total": len(results),
+        "accepted": sum(1 for r in results if r.get("accepted", False)),
+        "rejected": sum(1 for r in results if not r.get("accepted", False)),
+        "by_stage": {},
+        "best_train_ic": 0.0,
+        "best_valid_ic": 0.0,
+    }
+
+    for r in results:
+        stage = r.get("stage", "unknown")
+        summary["by_stage"][stage] = summary["by_stage"].get(stage, 0) + 1
+
+        metrics = r.get("metrics", {})
+        if "train" in metrics:
+            ic = metrics["train"].get("ic_mean", 0)
+            if ic > summary["best_train_ic"]:
+                summary["best_train_ic"] = ic
+        if "valid" in metrics:
+            ic = metrics["valid"].get("ic_mean", 0)
+            if ic > summary["best_valid_ic"]:
+                summary["best_valid_ic"] = ic
+
+    return summary
+
+
+def mine_factors(job_spec_path: str, dataset_meta_path: Optional[str] = None,
                 log_dir: Optional[str] = None, cuda_override: Optional[int] = None, **kwargs) -> Dict[str, Any]:
     """
     Unified entry point for factor mining.
     Now wraps the new modular orchestrator.
     """
-    from mining.orchestrator import run_experiment
-    return run_experiment(
-        job_spec_path=job_spec_path,
-        dataset_meta_path=dataset_meta_path,
-        log_dir=log_dir,
-        cuda_override=cuda_override,
-        **kwargs
+    job_spec, dataset_meta, family_spec = load_runtime_specs(job_spec_path, dataset_meta_path)
+
+    if log_dir is None:
+        log_dir = os.path.join(
+            job_spec.output_dir,
+            f"{job_spec.job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+    os.makedirs(log_dir, exist_ok=True)
+
+    cuda_id = cuda_override if cuda_override is not None else job_spec.cuda
+    if torch.cuda.is_available() and cuda_id >= 0:
+        device = torch.device(f"cuda:{cuda_id}")
+    else:
+        device = torch.device("cpu")
+
+    registry, datahub, train_loader, valid_loader, test_loader = build_data_context(
+        job_spec, dataset_meta, device, log_dir=log_dir
     )
+
+    target, feature_members, operators, delta_times, constants, pool, quality_validator, feature_enum = build_alpha_context(
+        job_spec, dataset_meta, family_spec, registry, train_loader, valid_loader, test_loader
+    )
+
+    pool._init_rejection_log(log_dir, context={
+        "job_id": job_spec.job_id,
+        "dataset_id": job_spec.dataset_id,
+        "family_id": job_spec.family_id,
+        "generator": job_spec.generator_name,
+    })
+
+    train_target = target.evaluate(train_loader)
+    train_loader.target = train_target
+    valid_target = target.evaluate(valid_loader)
+    valid_loader.target = valid_target
+    if test_loader:
+        test_target = target.evaluate(test_loader)
+        test_loader.target = test_target
+
+    if job_spec.generator_name == "gfn":
+        ctx = MiningRuntimeContext(
+            job_spec=job_spec,
+            dataset_meta=dataset_meta,
+            family_spec=family_spec,
+            registry=registry,
+            datahub=datahub,
+            train_loader=train_loader,
+            valid_loader=valid_loader,
+            test_loader=test_loader,
+            target=target,
+            operators=operators,
+            delta_times=delta_times,
+            constants=constants,
+            pool=pool,
+            env=None,
+            gfn=None,
+            sampler=None,
+            optimizer=None,
+            log_dir=log_dir,
+            device=device,
+        )
+        env, gfn, sampler, optimizer = build_gfn_context(
+            job_spec, pool, registry, dataset_meta, feature_members,
+            operators, delta_times, constants, device, quality_validator
+        )
+        ctx.env = env
+        ctx.gfn = gfn
+        ctx.sampler = sampler
+        ctx.optimizer = optimizer
+        return run_training_loop(ctx)
+    else:
+        return run_candidate_eval_loop(job_spec, dataset_meta, family_spec, registry, datahub,
+                                       train_loader, valid_loader, test_loader, target, pool,
+                                       quality_validator, operators, delta_times, constants, log_dir, device,
+                                       feature_enum)
 
 if __name__ == "__main__":
     import argparse

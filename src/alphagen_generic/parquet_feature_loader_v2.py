@@ -7,6 +7,7 @@ import pyarrow as pa
 import hashlib
 import json
 import logging
+from datetime import datetime
 from typing import List, Optional, Union, Tuple, Dict, Any, Literal, Iterator, Set
 from dataclasses import dataclass
 from pathlib import Path
@@ -409,33 +410,42 @@ class ParquetFeatureLoaderV2:
              
         return data.to(self.device), self._dates, self._stock_ids
 
+    def _quote_ident(self, name: str) -> str:
+        if "." in name:
+            return ".".join(f'"{p}"' for p in name.split("."))
+        return f'"{name}"'
+
     def _resolve_all_dates(self) -> List[str]:
-        # 随便找一层获取所有日期
         if not self.layer_sources: return []
         src = next(iter(self.layer_sources.values()))
         try:
             if src.source_type == "duckdb_table":
-                df = self.datahub.execute_sql(f"SELECT DISTINCT {src.date_col} FROM {src.name} ORDER BY {src.date_col}").to_pandas()
+                table = self._quote_ident(src.name)
+                date_col = self._quote_ident(src.date_col)
+                df = self.datahub.execute_sql(
+                    f"SELECT DISTINCT {date_col} FROM {table} ORDER BY {date_col}"
+                ).to_pandas()
                 dates = df[src.date_col].astype(str).tolist()
             else:
-                # 兼容处理：read_parquet 可能会读到 datetime 对象
                 df = pd.read_parquet(src.name, columns=[src.date_col])
                 dates = sorted(df[src.date_col].unique().astype(str).tolist())
-            
-            # 过滤掉非法日期
+
             return [d for d in dates if len(d) >= 8]
         except Exception as e:
             logger.error(f"Error resolving all dates from {src.name}: {e}")
             return []
 
     def _read_source(self, src: LayerSource, cols: List[str], start_date: str, end_date: str) -> pd.DataFrame:
+        safe_cols = ", ".join(self._quote_ident(c) for c in cols)
+        safe_table = self._quote_ident(src.name)
+        safe_date = self._quote_ident(src.date_col)
+
         if src.source_type == "duckdb_table":
-            sql = f"SELECT {', '.join(cols)} FROM {src.name} WHERE {src.date_col} BETWEEN '{start_date}' AND '{end_date}'"
+            sql = f"SELECT {safe_cols} FROM {safe_table} WHERE {safe_date} BETWEEN '{start_date}' AND '{end_date}'"
             return self.datahub.execute_sql(sql).to_pandas()
         else:
             if self.datahub:
-                # 使用 DuckDB 扫描 Parquet
-                sql = f"SELECT {', '.join(cols)} FROM read_parquet('{src.name}') WHERE {src.date_col} BETWEEN '{start_date}' AND '{end_date}'"
+                sql = f"SELECT {safe_cols} FROM read_parquet('{src.name}') WHERE {safe_date} BETWEEN '{start_date}' AND '{end_date}'"
                 return self.datahub.execute_sql(sql).to_pandas()
             else:
                 df = pd.read_parquet(src.name, columns=cols)
@@ -465,3 +475,28 @@ class ParquetFeatureLoaderV2:
         else:
             idx = item
         return self.data[:, idx, :]
+
+    def diagnose(self) -> Dict[str, Any]:
+        return {
+            "domain": self.domain,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "layers": self.layers,
+            "read_mode": self.read_mode,
+            "n_dates": len(self._dates),
+            "n_stocks": len(self._stock_ids),
+            "n_features": len(self.feature_plan),
+            "missing_features": [
+                feat for feat, layer, col in self.feature_plan if layer == "none"
+            ],
+            "layer_sources": {
+                layer: {
+                    "source_type": src.source_type,
+                    "name": src.name,
+                    "date_col": src.date_col,
+                    "code_col": src.code_col,
+                    "n_cols": len(src.available_columns),
+                }
+                for layer, src in self.layer_sources.items()
+            },
+        }

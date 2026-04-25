@@ -4,9 +4,9 @@ family_id: moneyflow_ts_complex
 name: Moneyflow Complex Mining Test
 
 # --- 核心作业参数 (必须在顶层) ---
-train_start: "20200101"
-train_end: "20231231"
-test_start: "20240101"
+train_start: "20230101"
+train_end: "20240631"
+test_start: "20250101"
 test_end: "20250331"
 
 n_episodes: 20      # 修正：移动到顶层，设置较小值用于测试
@@ -22,8 +22,8 @@ segment_name: "test_segment"
 # --- 实验/底层参数 (在 raw 字典内) ---
 raw:
   layers: ["raw", "filled", "atomic"]
-  valid_start: "20240101"
-  valid_end: "20240630"
+  valid_start: "20230701"
+  valid_end: "20241231"
   
   batch_size: 8
   learning_rate: 0.001 # 修正：名称对齐

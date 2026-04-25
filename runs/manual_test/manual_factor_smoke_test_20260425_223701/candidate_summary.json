@@ -1,0 +1,10 @@
+{
+  "total": 15,
+  "accepted": 0,
+  "rejected": 15,
+  "by_stage": {
+    "parse": 15
+  },
+  "best_train_ic": 0.0,
+  "best_valid_ic": 0.0
+}

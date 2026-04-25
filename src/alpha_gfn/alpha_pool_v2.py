@@ -6,15 +6,18 @@
 import hashlib
 import logging
 import os
+import json
+import datetime
+import traceback
 from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import asdict
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from alphagen.models.alpha_pool import AlphaPool
 from alphagen.data.expression import Expression
 from alphagen_generic.parquet_feature_loader_v2 import ParquetFeatureLoaderV2 as ParquetFeatureLoader
+from alphagen.utils.pytorch_utils import masked_mean_std
 try:
     from factor_core.cache import CacheManager, CacheKeyBuilder
     from factor_core.expression_quality import ExpressionQualityValidator
@@ -30,11 +33,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class AlphaPoolGFN(AlphaPool):
+class AlphaPoolGFN:
     """
     升级版的AlphaPoolGFN，支持优化的入池策略和缓存管理
     """
-    
+
     def __init__(
         self,
         capacity: int,
@@ -44,21 +47,19 @@ class AlphaPoolGFN(AlphaPool):
         ssl_k: int = 3,
         ssl_tau: float = 0.1,
         cache_manager: CacheManager = None,
-        entry_strategy: str = "composite",  # ic_ranking, diversity_aware, adaptive, composite
+        entry_strategy: str = "composite",
         diversity_weight: float = 0.3,
         min_ic_threshold: float = 0.05,
         max_similarity_threshold: float = 0.95,
         adaptive_threshold_decay: float = 0.99,
         enable_cache: bool = True,
         cache_key_builder: CacheKeyBuilder = None,
-        # New components
         valid_data: Optional[ParquetFeatureLoader] = None,
         test_data: Optional[ParquetFeatureLoader] = None,
         metrics_evaluator: Optional[FactorMetricsEvaluator] = None,
         quality_validator: Optional[ExpressionQualityValidator] = None,
         canonicalizer: Optional[ExpressionCanonicalizer] = None,
         semantic_embedder: Optional[OllamaExpressionEmbedder] = None,
-        # New thresholds
         min_train_ic: float = 0.015,
         min_valid_ic: float = 0.005,
         min_rank_ic: float = 0.005,
@@ -68,7 +69,15 @@ class AlphaPoolGFN(AlphaPool):
         max_pool_corr: float = 0.70,
         semantic_sim_threshold: float = 0.92,
     ):
-        super().__init__(capacity, stock_data, target)
+        self.capacity = capacity
+        self.data = stock_data
+        self.target = target
+        self.size: int = 0
+        self.exprs: List[Expression] = []
+        self.values: List[Optional[Tensor]] = []
+        self.single_ics = np.zeros(capacity + 1)
+        self.record_reward: List[float] = []
+
         self.ic_mut_threshold = ic_mut_threshold
         self.ssl_k = ssl_k
         self.ssl_tau = ssl_tau
@@ -80,16 +89,14 @@ class AlphaPoolGFN(AlphaPool):
         self.adaptive_threshold_decay = adaptive_threshold_decay
         self.enable_cache = enable_cache
         self.cache_key_builder = cache_key_builder or CacheKeyBuilder()
-        
-        # New components
+
         self.valid_data = valid_data
         self.test_data = test_data
         self.metrics_evaluator = metrics_evaluator or FactorMetricsEvaluator()
         self.quality_validator = quality_validator
         self.canonicalizer = canonicalizer or ExpressionCanonicalizer()
         self.semantic_embedder = semantic_embedder
-        
-        # New thresholds
+
         self.min_train_ic = min_train_ic
         self.min_valid_ic = min_valid_ic
         self.min_rank_ic = min_rank_ic
@@ -98,8 +105,7 @@ class AlphaPoolGFN(AlphaPool):
         self.max_nan_ratio = max_nan_ratio
         self.max_pool_corr = max_pool_corr
         self.semantic_sim_threshold = semantic_sim_threshold
-        
-        # 扩展存储
+
         self.composite_scores = np.zeros(capacity + 1)
         self.metric_records = [None for _ in range(capacity + 1)]
         self.quality_records = [None for _ in range(capacity + 1)]
@@ -107,16 +113,12 @@ class AlphaPoolGFN(AlphaPool):
         self.canonical_hashes_by_slot = [None for _ in range(capacity + 1)]
         self.canonical_hashes = set()
         self.semantic_embeddings = [None for _ in range(capacity + 1)]
-        
-        # 获取 log_dir 并初始化拒绝日志
+
         self.log_dir = "."
-        # 尝试从 stock_data 或上下文推断 log_dir，或者在外部设置
         self.rejection_file = "rejections.csv"
-        
-        # 初始化嵌入存储
+
         self.embeddings: List[Optional[Tensor]] = [None for _ in range(capacity + 1)]
-        
-        # 统计信息
+
         self.stats = {
             'total_evaluations': 0,
             'cache_hits': 0,
@@ -125,13 +127,20 @@ class AlphaPoolGFN(AlphaPool):
             'pool_rejections': 0,
             'adaptive_threshold_updates': 0
         }
-        
-        # 自适应阈值
+
         self.current_ic_threshold = min_ic_threshold
         self.current_diversity_threshold = 1.0 - max_similarity_threshold
-        
+
         logger.info(f"Initialized AlphaPoolGFN with capacity={capacity}, strategy={entry_strategy}")
-    
+
+    @staticmethod
+    def _normalize_by_day(value: Tensor) -> Tensor:
+        mean, std = masked_mean_std(value)
+        value = (value - mean[:, None]) / std[:, None]
+        nan_mask = torch.isnan(value)
+        value[nan_mask] = 0.
+        return value
+
     def try_new_expr_with_ssl(self, expr: Expression, embedding: Optional[Tensor] = None) -> Tuple[float, float, float]:
         """
         同时计算 IC 奖励、新颖性奖励和 SSL 奖励
@@ -220,42 +229,72 @@ class AlphaPoolGFN(AlphaPool):
                 total_loss += weights[i].item() * mse
         return total_loss
 
-    def _init_rejection_log(self, log_dir: str):
+    def _init_rejection_log(self, log_dir: str, context: Optional[Dict[str, Any]] = None):
         """初始化拒绝日志文件"""
         self.log_dir = log_dir
+        self.event_file = os.path.join(log_dir, "candidate_events.jsonl")
         self.rejection_file = os.path.join(log_dir, "rejections.csv")
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir, exist_ok=True)
+        self.log_context = context or {}
+        os.makedirs(self.log_dir, exist_ok=True)
         if not os.path.exists(self.rejection_file):
             with open(self.rejection_file, "w", encoding="utf-8") as f:
                 f.write("timestamp,expression,ic,max_mut_corr,reason\n")
 
-    def _log_rejection(self, expr: Expression, ic: float, max_mut: float, reason: str):
+    def _log_candidate_event(
+        self,
+        expr=None,
+        raw_expression=None,
+        accepted=False,
+        stage="unknown",
+        reason="",
+        ic=0.0,
+        max_mut=0.0,
+        score=None,
+        metrics=None,
+        quality=None,
+        canonical=None,
+        exception=None,
+    ):
+        event = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            **self.log_context,
+            "raw_expression": raw_expression or (str(expr) if expr is not None else ""),
+            "expression": str(expr) if expr is not None else None,
+            "canonical_expression": str(canonical) if canonical is not None else None,
+            "accepted": bool(accepted),
+            "stage": stage,
+            "reason": reason,
+            "ic": float(ic) if ic is not None else None,
+            "max_mut_corr": float(max_mut) if max_mut is not None else None,
+            "score": float(score) if score is not None else None,
+            "metrics": metrics or {},
+            "quality": asdict(quality) if hasattr(quality, "__dataclass_fields__") else quality,
+            "exception_type": type(exception).__name__ if exception else None,
+            "exception_message": str(exception) if exception else None,
+            "traceback": traceback.format_exc() if exception else None,
+        }
+        with open(self.event_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+
+    def _log_rejection(self, expr: Expression, ic: float, max_mut: float, reason: str,
+                       stage: str = "unknown", metrics=None, quality=None, exception=None,
+                       raw_expression: Optional[str] = None):
         """记录被拒绝的因子"""
-        import datetime
-        import os
-        if not hasattr(self, "rejection_file"):
+        if not hasattr(self, "event_file"):
             return
-            
-        # 确保目录存在
-        log_dir = os.path.dirname(self.rejection_file)
-        if log_dir and not os.path.exists(log_dir):
-            try:
-                os.makedirs(log_dir, exist_ok=True)
-            except Exception:
-                return
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # 清理表达式中的换行符
-        expr_str = str(expr).replace("\n", " ").replace("\r", "")
-        
-        # 如果文件不存在，写入表头
-        if not os.path.exists(self.rejection_file):
-            with open(self.rejection_file, "w", encoding="utf-8") as f:
-                f.write("timestamp,expression,ic,max_mut_corr,reason\n")
-                
-        with open(self.rejection_file, "a", encoding="utf-8") as f:
-            f.write(f"{timestamp},\"{expr_str}\",{ic:.6f},{max_mut:.6f},\"{reason}\"\n")
+        self._log_candidate_event(
+            expr=expr,
+            raw_expression=raw_expression,
+            accepted=False,
+            stage=stage,
+            reason=reason,
+            ic=ic,
+            max_mut=max_mut,
+            metrics=metrics,
+            quality=quality,
+            exception=exception,
+        )
 
     def _calc_ics(self, value: Tensor, ic_mut_threshold: float = 0.9) -> Tuple[float, np.ndarray]:
         """计算 IC 和互相关性"""
@@ -302,27 +341,21 @@ class AlphaPoolGFN(AlphaPool):
         尝试添加新表达式到池中 (重构后的逻辑)
         """
         self.stats['total_evaluations'] += 1
-        
-        # 1. 表达式结构质量验证 (Expression Quality)
+
         q_report = None
         if self.quality_validator:
             q_report = self.quality_validator.validate(expr)
             if not q_report.accept:
-                # 即使质量不合格，如果是为了调试，我们可以尝试计算一下 IC
-                # 但为了工程严谨，目前仅记录原因并返回极小奖励以提供梯度反馈
-                self._log_rejection(expr, 0.0, 0.0, f"quality:{q_report.reason}")
+                self._log_rejection(expr, 0.0, 0.0, f"quality:{q_report.reason}", stage="quality", quality=q_report)
                 return 1e-10, 0.0
-                
-        # 2. 表达式归一化去重 (Canonical Hash)
+
         canonical = self.canonicalizer.canonicalize(expr)
         expr_hash = self.canonicalizer.hash(expr)
         if expr_hash in self.canonical_hashes:
-            self._log_rejection(expr, 0.0, 1.0, "duplicate:canonical")
+            self._log_rejection(expr, 0.0, 1.0, "duplicate:canonical", stage="canonical", canonical=canonical)
             return 1e-10, 0.0
-            
-        # 3. 评估因子值
+
         try:
-            # 尝试从缓存获取
             value = None
             if self.enable_cache and self.cache_manager:
                 cache_key = self.cache_key_builder.build_key(expr)
@@ -332,87 +365,77 @@ class AlphaPoolGFN(AlphaPool):
                     _, _, value = cached
                 else:
                     self.stats['cache_misses'] += 1
-            
+
             if value is None:
                 value = self._normalize_by_day(expr.evaluate(self.data))
                 if self.enable_cache and self.cache_manager:
                     self.cache_manager.put(cache_key, (None, None, value))
-                    
+
         except Exception as e:
-            self._log_rejection(expr, 0.0, 0.0, f"eval_error:{type(e).__name__}")
+            self._log_rejection(expr, 0.0, 0.0, f"eval_error:{type(e).__name__}", stage="evaluate", exception=e)
             return 1e-10, 0.0
-            
-        # 4. 因子值健康检查 (Value Sanity)
+
         sanity = self.metrics_evaluator.value_sanity(value)
         if not sanity["ok"]:
-            self._log_rejection(expr, 0.0, 0.0, f"value_sanity:{sanity['reason']}")
+            self._log_rejection(expr, 0.0, 0.0, f"value_sanity:{sanity['reason']}", stage="value_sanity", metrics=sanity)
             return 1e-10, 0.0
-            
-        # 5. 快速计算 Train Metrics
+
         train_metrics = self.metrics_evaluator.evaluate_tensor(value, self.target)
         direction = 1.0 if train_metrics["ic_mean"] >= 0 else -1.0
         train_ic_adj = train_metrics["ic_adj"]
-        
+
         if train_ic_adj < self.min_train_ic:
-            self._log_rejection(expr, train_ic_adj, 0.0, "low_train_ic")
-            # 给模型一个基于 IC 的正反馈，但不入池
+            self._log_rejection(expr, train_ic_adj, 0.0, "low_train_ic", stage="train_metrics", metrics=train_metrics)
             return max(train_ic_adj, 1e-10), 0.0
-            
-        # 6. 计算 Valid Metrics (只有 Train 合格才算 Valid，省时间)
+
         valid_metrics = None
         if self.valid_data:
             try:
                 valid_value = self._normalize_by_day(expr.evaluate(self.valid_data))
                 valid_metrics = self.metrics_evaluator.evaluate_tensor(
-                    valid_value, 
-                    self.valid_data.target if hasattr(self.valid_data, 'target') else self.target, # Fallback
+                    valid_value,
+                    self.valid_data.target if hasattr(self.valid_data, 'target') else self.target,
                     direction=direction
                 )
                 if valid_metrics["ic_adj"] < self.min_valid_ic:
-                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_ic")
+                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_ic", stage="valid_metrics", metrics=valid_metrics)
                     return max(train_ic_adj, 1e-10), 0.0
                 if valid_metrics["rank_ic_adj"] < self.min_rank_ic:
-                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_rank_ic")
+                    self._log_rejection(expr, train_ic_adj, 0.0, "low_valid_rank_ic", stage="valid_metrics", metrics=valid_metrics)
                     return max(train_ic_adj, 1e-10), 0.0
             except Exception as e:
                 logger.warning(f"Valid evaluation failed for {expr}: {e}")
-                
-        # 7. 池互相关拒绝 (Pool Correlation)
+
         ic_mut = []
         max_pool_corr = 0.0
         for i in range(self.size):
             if self.values[i] is not None:
-                # 使用 factor_eval.panel_ops 中的相关性计算可能更好，但为了速度先用已有的
                 from alphagen.utils.correlation import batch_pearsonr
                 corr = abs(batch_pearsonr(value, self.values[i]).mean().item())
                 ic_mut.append(corr)
-        
+
         if ic_mut:
             max_pool_corr = max(ic_mut)
             if max_pool_corr > self.max_pool_corr:
-                self._log_rejection(expr, train_ic_adj, max_pool_corr, "high_pool_corr")
+                self._log_rejection(expr, train_ic_adj, max_pool_corr, "high_pool_corr", stage="pool_correlation")
                 return max(train_ic_adj, 1e-10), 1.0 - max_pool_corr
 
-        # 8. 语义去重 (Semantic Duplicate)
         semantic_sim = 0.0
         semantic_vec = None
         if self.semantic_embedder:
             semantic_vec = self.semantic_embedder.embed_one(canonical)
-            # 计算与池中因子的语义相似度
             for i in range(self.size):
                 if self.semantic_embeddings[i] is not None:
-                    sim = float(np.dot(semantic_vec, self.semantic_embeddings[i])) # 假设已归一化
+                    sim = float(np.dot(semantic_vec, self.semantic_embeddings[i]))
                     semantic_sim = max(semantic_sim, sim)
-            
+
             if semantic_sim > self.semantic_sim_threshold:
-                self._log_rejection(expr, train_ic_adj, max_pool_corr, "semantic_duplicate")
+                self._log_rejection(expr, train_ic_adj, max_pool_corr, "semantic_duplicate", stage="semantic_duplicate")
                 return max(train_ic_adj, 1e-10), 1.0 - semantic_sim
 
-        # 9. 计算综合得分 (Composite Score)
         novelty = 1.0 - max(max_pool_corr, semantic_sim)
         score = self._composite_score(train_metrics, valid_metrics, novelty, q_report)
-        
-        # 10. 入池或替换 (Add / Replace)
+
         added = self._add_or_replace(
             expr=expr,
             value=value,
@@ -428,6 +451,17 @@ class AlphaPoolGFN(AlphaPool):
         
         if added:
             self.stats['pool_additions'] += 1
+            self._log_candidate_event(
+                expr=expr,
+                accepted=True,
+                stage="accepted",
+                reason="accepted",
+                ic=train_ic_adj,
+                score=score,
+                metrics={"train": train_metrics, "valid": valid_metrics},
+                quality=q_report,
+                canonical=canonical,
+            )
             logger.info(f"[Pool Add] {expr} (Score: {score:.4f}, IC: {train_ic_adj:.4f})")
         else:
             self.stats['pool_rejections'] += 1
@@ -526,7 +560,9 @@ class AlphaPoolGFN(AlphaPool):
         """交换池中两个位置的因子"""
         if i == j:
             return
-        super()._swap_idx(i, j)
+        self.exprs[i], self.exprs[j] = self.exprs[j], self.exprs[i]
+        self.single_ics[i], self.single_ics[j] = self.single_ics[j], self.single_ics[i]
+        self.values[i], self.values[j] = self.values[j], self.values[i]
         self.embeddings[i], self.embeddings[j] = self.embeddings[j], self.embeddings[i]
     
     def export_pool(self, output_path: str):
@@ -571,10 +607,12 @@ class AlphaPoolGFN(AlphaPool):
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        base_dict = super().to_dict()
-        base_dict.update({
+        return {
+            'capacity': self.capacity,
+            'size': self.size,
+            'expressions': [str(expr) for expr in self.exprs[:self.size]],
+            'ics': self.single_ics[:self.size].tolist(),
             'stats': self.get_stats(),
             'entry_strategy': self.entry_strategy,
             'embeddings': [e.tolist() if e is not None else None for e in self.embeddings[:self.size]]
-        })
-        return base_dict
+        }

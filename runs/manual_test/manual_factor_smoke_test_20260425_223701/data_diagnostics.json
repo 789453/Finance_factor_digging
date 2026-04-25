@@ -1,0 +1,116 @@
+{
+  "train": {
+    "domain": "A",
+    "start_time": "20230101",
+    "end_time": "20240630",
+    "layers": [
+      "raw",
+      "filled",
+      "atomic"
+    ],
+    "read_mode": "stack",
+    "n_dates": 439,
+    "n_stocks": 5430,
+    "n_features": 24,
+    "missing_features": [],
+    "layer_sources": {
+      "raw": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 20
+      },
+      "filled": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_daily.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 11
+      },
+      "atomic": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow_atomic.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 8
+      }
+    }
+  },
+  "valid": {
+    "domain": "A",
+    "start_time": "20250101",
+    "end_time": "20250331",
+    "layers": [
+      "raw",
+      "filled",
+      "atomic"
+    ],
+    "read_mode": "stack",
+    "n_dates": 137,
+    "n_stocks": 5421,
+    "n_features": 24,
+    "missing_features": [],
+    "layer_sources": {
+      "raw": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 20
+      },
+      "filled": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_daily.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 11
+      },
+      "atomic": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow_atomic.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 8
+      }
+    }
+  },
+  "test": {
+    "domain": "A",
+    "start_time": "20250101",
+    "end_time": "20250331",
+    "layers": [
+      "raw",
+      "filled",
+      "atomic"
+    ],
+    "read_mode": "stack",
+    "n_dates": 137,
+    "n_stocks": 5421,
+    "n_features": 24,
+    "missing_features": [],
+    "layer_sources": {
+      "raw": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 20
+      },
+      "filled": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_daily.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 11
+      },
+      "atomic": {
+        "source_type": "parquet_file",
+        "name": "D:\\Trading\\data_ever_26_3_14\\data\\silver\\stock_moneyflow_atomic.parquet",
+        "date_col": "trade_date",
+        "code_col": "ts_code",
+        "n_cols": 8
+      }
+    }
+  }
+}

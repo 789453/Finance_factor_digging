@@ -372,6 +372,30 @@ class MiningJobSpec:
     def log_freq(self) -> int:
         return self.raw.get("log_freq", 1000)
 
+    @property
+    def generator_config(self) -> Dict[str, Any]:
+        return self.raw.get("generator", self.raw.get("engine", {}))
+
+    @property
+    def generator_name(self) -> str:
+        return self.generator_config.get("name", self.raw.get("engine", {}).get("type", "gfn"))
+
+    @property
+    def candidate_source(self) -> Optional[str]:
+        return self.generator_config.get("expression_source")
+
+    @property
+    def thresholds(self) -> Dict[str, Any]:
+        return {
+            "min_train_ic": self.raw.get("min_train_ic", self.raw.get("ic_threshold", 0.015)),
+            "min_valid_ic": self.raw.get("min_valid_ic", 0.005),
+            "min_rank_ic": self.raw.get("min_rank_ic", 0.005),
+            "min_ic_ir": self.raw.get("min_ic_ir", 0.05),
+            "min_coverage": self.raw.get("min_coverage", 0.65),
+            "max_nan_ratio": self.raw.get("max_nan_ratio", 0.35),
+            "max_pool_corr": self.raw.get("max_pool_corr", 0.70),
+        }
+
 def load_job_spec(spec_path: str) -> MiningJobSpec:
     """加载作业规格"""
     warnings.warn("load_job_spec is legacy; use load_experiment_spec", DeprecationWarning)

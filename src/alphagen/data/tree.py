@@ -1,6 +1,6 @@
 from alphagen.data.expression import *
 from alphagen.data.tokens import *
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from enum import IntEnum
 
 
@@ -105,6 +105,15 @@ class ExpressionParser:
             self.feature_map = {}
         else:
             self.feature_map = feature_map
+
+    def _get_feature_by_name(self, name: str) -> Any:
+        if self.feature_enum is None:
+            return name
+        name_upper = name.upper()
+        for member in self.feature_enum:
+            if member.name.upper() == name_upper or str(member.value).upper() == name_upper:
+                return member
+        return name
 
     def tokenize(self, expr: str) -> List[Token]:
         from alphagen.data.expression import (

@@ -1,0 +1,61 @@
+job_id: manual_factor_smoke_test
+dataset_id: cn.stock.moneyflow.daily.v1
+family_id: moneyflow_ts_complex
+name: Manual Factor Smoke Test
+
+train_start: "20230101"
+train_end: "20240630"
+test_start: "20250101"
+test_end: "20250331"
+
+n_episodes: 20
+log_freq: 5
+pool_capacity: 50
+label_days: 5
+max_expr_length: 20
+max_backtrack_days: 60
+max_future_days: 20
+entropy_coef: 0.01
+segment_name: "test_segment"
+seed: 42
+
+raw:
+  layers: ["raw", "filled", "atomic"]
+  valid_start: "20230701"
+  valid_end: "20241231"
+  batch_size: 8
+  learning_rate: 0.001
+
+  ic_threshold: 0.015
+  min_valid_ic: 0.005
+  min_complexity: 6
+  min_operators: 3
+  min_ts_operators: 1
+
+  enable_ollama_embedding: True
+  entry_strategy: "composite"
+  ic_mut_threshold: 0.60
+  semantic_sim_threshold: 0.92
+
+generator:
+  name: manual
+  n_candidates: 50
+  expressions:
+    - "TsRank(Div(net_mf_amount, Add(Add(buy_lg_amount, sell_lg_amount), 0.001)), 20)"
+    - "TsDelta(mf_net_ratio, 5)"
+    - "TsCorr(mf_pressure, mf_acceleration, 10)"
+    - "Sub(mf_imbalance_elg, TsMean(mf_imbalance_elg, 10))"
+    - "TsDelta(mf_net_ratio, 5.0)"
+    - "Ref(close, -5) / close - 1"
+    - "TsMean(close, 20) / close - 1"
+    - "TsStd(volume, 20)"
+    - "Rank(Ref(close, -1))"
+    - "TsMean(Ref(close, -1), 10) / TsMean(close, 10) - 1"
+    - "Div(TsMean(close, 20), close) - 1"
+    - "TsMax(close, 60) / close - 1"
+    - "TsMin(close, 60) / close - 1"
+    - "TsRank(volume, 20)"
+    - "Div(Sub(close, TsMin(close, 20)), Sub(TsMax(close, 20), TsMin(close, 20)))"
+
+output_dir: runs/manual_test
+cuda: -1
